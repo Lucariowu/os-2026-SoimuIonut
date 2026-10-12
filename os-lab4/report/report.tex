@@ -1,0 +1,552 @@
+\documentclass{labreport}
+
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{pifont}
+\usepackage{tabularx}
+\usepackage{booktabs}
+
+% Colors
+\definecolor{codebg}{RGB}{248, 249, 251}
+\definecolor{codeborder}{RGB}{218, 222, 229}
+\definecolor{linkcolor}{RGB}{20, 60, 120}
+\definecolor{zshgreen}{RGB}{0, 160, 80}
+\definecolor{zshred}{RGB}{200, 30, 30}
+
+% Hyperref setup with subtle link colors
+\hypersetup{
+    colorlinks=true,
+    linkcolor=linkcolor,
+    filecolor=linkcolor,
+    urlcolor=linkcolor,
+    citecolor=linkcolor
+}
+
+% Code and terminal listings
+\lstdefinestyle{bash}{
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeborder},
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=flexible,
+    numbers=none,
+    xleftmargin=3pt,
+    xrightmargin=3pt,
+    framesep=4pt
+}
+
+\lstdefinestyle{c}{
+    language=C,
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeborder},
+    keywordstyle=\color{blue!85!black}\bfseries,
+    commentstyle=\color{gray!80!black}\itshape,
+    stringstyle=\color{teal!80!black},
+    numbers=left,
+    numberstyle=\tiny\color{gray!80!black},
+    numbersep=8pt,
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=flexible,
+    tabsize=2,
+    xleftmargin=14pt,
+    xrightmargin=3pt,
+    framesep=4pt
+}
+
+\lstset{
+    extendedchars=true,
+    literate=
+        {➜}{{\textcolor{zshgreen}{\ding{220}}}}{1}
+        {├─}{|-\,}{2}
+        {└─}{\`-\,}{2}
+        {├}{|}{1}
+        {─}{-}{1}
+        {└}{\`}{1}
+        {✗}{{\textcolor{zshred}{\ding{55}}}}{1}
+}
+
+% Section styling for clean document structure
+\titleformat{\section}
+  {\large\bfseries}{\thesection}{0.8em}{}[\vspace{1pt}\hrule height 0.5pt]
+\titleformat{\subsection}
+  {\normalsize\bfseries}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}
+  {\small\bfseries}{\thesubsubsection}{0.8em}{}
+
+\begin{document}
+
+\labtitle
+    {4}
+    {The xv6 Shell from the Outside}
+    {st. gr. FAF-243}
+    {Șoimu Ionuț}
+    {asist. univ.\\[0.15cm] Reițman Patricia}
+
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Lab 4: Track B -- The xv6 Shell from the Outside}
+
+\subsection{Before you start}
+
+\subsubsection*{Purpose and Scope}
+The entire user interface of the educational UNIX operating system xv6 is implemented in a single user-space program, \texttt{user/sh.c}, spanning approximately 500 lines of concise C code. The primary purpose of this laboratory work is to investigate the mechanics of command-line interpretation by running the xv6 shell side-by-side with modern GNU \texttt{bash} on Linux.
+
+Through experimental side-by-side comparison, we dissect what capabilities an operating system shell is fundamentally required to provide (process invocation, file descriptor redirection, and inter-process pipelining) versus what conveniences modern shells like \texttt{bash} layer on top (pathname globbing, environment variable expansion, quotation parsing, and interactive line-editing). Furthermore, by writing a dedicated argument-inspection utility (\texttt{args}) in both environments, we empirically prove where the boundary of responsibility lies between user-space utilities, the shell interpreter, and the kernel.
+
+\subsubsection*{Environment Setup and Identification}
+\begin{lstlisting}[style=bash]
+➜  ~ cd ~/xv6-riscv
+➜  xv6-riscv git:(riscv) whoami
+ionut
+➜  xv6-riscv git:(riscv) uname -a
+Linux arch 7.2.8-1-cachyos #1 SMP PREEMPT_DYNAMIC Sat, 26 Sep 2026 19:43:45 +0000 x86_64 GNU/Linux
+➜  xv6-riscv git:(riscv) git status
+On branch riscv
+Your branch is up to date with 'origin/riscv'.
+\end{lstlisting}
+
+% ------------------------------------------------------------------------------
+\subsection{Part 1. Fix sleep for the current xv6}
+
+\subsubsection{System Call Verification in user.h}
+In August 2025, the xv6 upstream development team renamed the timer system call \texttt{sleep()} to \texttt{pause()} to avoid conceptual naming collisions with POSIX sleep semantics. We inspect \texttt{user/user.h} to determine which system call declaration is present:
+
+\begin{lstlisting}[style=bash]
+➜  xv6-riscv git:(riscv) grep -n "pause\|sleep" user/user.h
+25:int pause(int);
+\end{lstlisting}
+The header file explicitly declares \texttt{int pause(int);}. Consequently, our user-space utility must invoke \texttt{pause()} to enter the sleep state.
+
+\subsubsection{Implementation of user/sleep.c}
+We implement \texttt{user/sleep.c}, ensuring proper argument validation and usage diagnostics:
+
+\begin{lstlisting}[style=c]
+#include "kernel/types.h"
+#include "user/user.h"
+
+int
+main(int argc, char *argv[])
+{
+  if(argc != 2){
+    fprintf(2, "usage: sleep <ticks>\n");
+    exit(1);
+  }
+  pause(atoi(argv[1]));   // system call into the kernel (was sleep() before Aug 2025)
+  exit(0);
+}
+\end{lstlisting}
+
+\subsubsection{Integration into Makefile}
+We ensure that the binary target \texttt{\$U/\_sleep\textbackslash} is registered within the \texttt{UPROGS} definition list in the xv6 build configuration:
+\begin{lstlisting}[style=bash]
+UPROGS=\
+	$U/_cat\
+	$U/_echo\
+	$U/_sleep\
+	$U/_forktest\
+	...
+\end{lstlisting}
+
+\subsubsection{Build and Testing in QEMU}
+We compile the operating system and user-space binaries and boot the kernel inside QEMU:
+\begin{lstlisting}[style=bash]
+➜  xv6-riscv git:(riscv) make qemu
+qemu-system-riscv64 -machine virt -bios none -kernel kernel/kernel -m 128M -smp 3 -nographic -global virtio-mmio.force-legacy=false -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+
+xv6 kernel is booting
+
+hart 1 starting
+hart 2 starting
+init: starting sh
+$ sleep 20
+$ sleep
+usage: sleep <ticks>
+$
+\end{lstlisting}
+The tests succeed: \texttt{sleep 20} pauses the shell for 20 timer ticks before re-prompting, and invoking \texttt{sleep} without arguments triggers the error message on file descriptor 2 with exit code 1.
+
+% ------------------------------------------------------------------------------
+\subsection{Part 2. bash versus the xv6 shell}
+
+\subsubsection{Comparative Test Suite}
+We execute a standardized suite of 10 commands in both shells:
+\begin{itemize}[noitemsep]
+    \item \textbf{Linux bash:} Executed inside an isolated directory \texttt{\~/shtest} containing an empty file named \texttt{README}.
+    \item \textbf{xv6 shell:} Executed at the xv6 interactive prompt \texttt{\$} inside QEMU.
+\end{itemize}
+
+\newpage
+\begin{table}[htbp]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{p{3.4cm} p{2.0cm} p{2.5cm} p{2.5cm} X}
+\toprule
+\textbf{Command} & \textbf{Tests} & \textbf{bash (Linux)} & \textbf{xv6 shell} & \textbf{Why / Explanation} \\
+\midrule
+\texttt{echo hello > f ; cat < f} & Redirection & \texttt{hello} & \texttt{hello} & Both shells redirect stdout (\texttt{>}) and stdin (\texttt{<}) using OS file descriptors. \\
+\addlinespace
+\texttt{ls | grep READ} & Pipeline & \texttt{README} & \texttt{README 2 2 2441} & Both support pipes (\texttt{|}). xv6 \texttt{ls} includes type, inode, and byte size. \\
+\addlinespace
+\texttt{(echo a; echo b) | wc} & Grouping, list & \texttt{2 2 4} & \texttt{2 2 4} & Both shells parse parentheses (\texttt{(...)}) as command blocks whose combined stream is piped. \\
+\addlinespace
+\texttt{echo one ; echo two} & Sequence & \texttt{one} \newline \texttt{two} & \texttt{one} \newline \texttt{two} & Both shells use \texttt{;} to execute commands sequentially. \\
+\addlinespace
+\texttt{echo bg \&} & Background & \texttt{bg} (asynchronous) & \texttt{bg} (asynchronous) & Both support \texttt{\&} by forking without calling \texttt{wait()} in the parent. \\
+\addlinespace
+\texttt{ls *} & Globbing & \texttt{args args\_linux.c f README} & \texttt{ls: cannot open *} & bash expands \texttt{*} to matching filenames; xv6 passes \texttt{*} literally. \\
+\addlinespace
+\texttt{echo \$HOME} & Variables & \texttt{/home/ionut} & \texttt{\$HOME} & bash expands environment variables; xv6 has no variables and prints \texttt{\$HOME} literally. \\
+\addlinespace
+\texttt{echo "a b"} & Quotes & \texttt{a b} & \texttt{"a b"} & bash removes quotes and groups words; xv6 treats quotes as normal characters. \\
+\addlinespace
+\texttt{mkdir d ; cd d ; ls ..} & PATH lookup & \texttt{args ... README} & \texttt{exec ls failed} & bash resolves \texttt{ls} via \texttt{\$PATH} (\texttt{/usr/bin}); xv6 only checks current directory \texttt{/d}. \\
+\addlinespace
+\texttt{Arrow Up, Tab, Ctrl+R} & History / Completion & Recalls command, autocompletes, searches & Prints escape codes / tabs; no history & bash links against GNU Readline; xv6 reads raw characters via \texttt{gets()}. \\
+\bottomrule
+\end{tabularx}
+\caption{Comprehensive behavioral comparison between GNU bash and xv6 sh}
+\end{table}
+
+\subsubsection{Terminal Execution Record: GNU bash}
+\begin{lstlisting}[style=bash]
+➜  ~ mkdir -p ~/shtest && cd ~/shtest && touch README
+➜  shtest echo hello > f ; cat < f
+hello
+➜  shtest ls | grep READ
+README
+➜  shtest (echo a; echo b) | wc
+      2       2       4
+➜  shtest echo one ; echo two
+one
+two
+➜  shtest echo bg &
+[1] 23412
+bg
+➜  shtest ls *
+args  args_linux.c  f  README
+➜  shtest echo $HOME
+/home/ionut
+➜  shtest echo "a b"
+a b
+➜  shtest mkdir d ; cd d ; ls ..
+args  args_linux.c  d  f  README
+➜  shtest cd ~/shtest
+\end{lstlisting}
+
+\subsubsection{Terminal Execution Record: xv6 shell}
+\begin{lstlisting}[style=bash]
+$ echo hello > f ; cat < f
+hello
+$ ls | grep READ
+README         2 2 2441
+$ (echo a; echo b) | wc
+2 2 4
+$ echo one ; echo two
+one
+two
+$ echo bg &
+bg
+$ ls *
+ls: cannot open *
+$ echo $HOME
+$HOME
+$ echo "a b"
+"a b"
+$ mkdir d ; cd d ; ls ..
+exec ls failed
+$ /ls ..
+.              1 1 1024
+..             1 1 1024
+README         2 2 2441
+cat            2 3 35864
+echo           2 4 34760
+...
+d              1 24 32
+f              2 25 6
+$
+\end{lstlisting}
+
+\subsubsection*{Observe:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{List the features both shells have, and the ones only bash has.}
+    \begin{itemize}[noitemsep, topsep=2pt]
+        \item \textbf{Features common to both shells:}
+        \begin{itemize}[noitemsep]
+            \item Input, output, and appending redirection (\texttt{<}, \texttt{>}, \texttt{>>})
+            \item Inter-process communication pipelines (\texttt{|})
+            \item Command sequencing via semicolons (\texttt{;})
+            \item Command grouping in subshells (\texttt{(...)})
+            \item Asynchronous background process execution (\texttt{\&})
+            \item Built-in directory navigation (\texttt{cd})
+        \end{itemize}
+        \item \textbf{Features present only in bash:}
+        \begin{itemize}[noitemsep]
+            \item \texttt{\$PATH} binary resolution across system directories
+            \item Pathname expansion and wildcard globbing (\texttt{*}, \texttt{?}, \texttt{[...]})
+            \item Environment and shell variables (\texttt{\$HOME}, \texttt{\$USER}, \texttt{\$?})
+            \item Quote parsing, parameter grouping, and escape sequences (\texttt{""}, \texttt{''}, \texttt{\textbackslash})
+            \item Command-line editing, history browsing, reverse search, and Tab completion (GNU Readline)
+            \item Control-flow statements (\texttt{if}, \texttt{for}, \texttt{while}) and command substitution (\texttt{\$(...)})
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{In xv6, ls stops working after cd d. Why? Find a way to run ls from inside d anyway.}\\[0.2em]
+    \textbf{Why it fails:} The xv6 shell does not maintain or search a \texttt{PATH} environment variable. When a command such as \texttt{ls} is executed without a leading slash, the shell directly invokes the system call \texttt{exec("ls", ...)}. The xv6 kernel attempts to open and load the executable named \texttt{ls} relative to the process's current working directory. When the user is in the root directory \texttt{/}, \texttt{ls} succeeds because the binary is located at \texttt{/ls}. However, once inside directory \texttt{/d}, the kernel searches for \texttt{/d/ls}, which does not exist, causing \texttt{exec} to fail with \texttt{exec ls failed}.\\
+    \textbf{Way to run it anyway:} We must supply the absolute path or relative path to the root binary:
+    \begin{center}
+    \texttt{/ls ..} \quad \text{or} \quad \texttt{../ls ..}
+    \end{center}
+
+    \item \textbf{Which missing feature would you miss most in daily work, and which would be easiest to add?}\\[0.2em]
+    \textbf{Missed most:} The lack of \textbf{\texttt{PATH} lookup} and \textbf{command-line editing (Tab completion / history)}. Without \texttt{PATH}, organizing programs into clean directories like \texttt{/bin} or \texttt{/usr/bin} is impractical without typing full paths for every utility. Without Tab completion and history, every path and typo must be re-entered manually from scratch.\\
+    \textbf{Easiest to add:} A basic \textbf{\texttt{PATH} lookup mechanism} or \textbf{simple quote stripping}. For \texttt{PATH}, in \texttt{user/sh.c}, inside \texttt{case EXEC:}, if \texttt{ecmd->argv[0]} does not begin with \texttt{/}, the shell could simply prefix \texttt{/} to the program name before invoking \texttt{exec()}. If the file exists in the root directory, it executes immediately without requiring the user to type \texttt{/ls}.
+\end{enumerate}
+
+% ------------------------------------------------------------------------------
+\subsection{Part 3. Who expands *? A program that prints its argv}
+
+\subsubsection{Utility Implementation for xv6: user/args.c}
+We write \texttt{user/args.c} to print the exact number of command-line arguments received and each individual string in \texttt{argv}:
+
+\begin{lstlisting}[style=c]
+#include "kernel/types.h"
+#include "user/user.h"
+
+int
+main(int argc, char *argv[])
+{
+  printf("argc = %d\n", argc);
+  for(int i = 0; i < argc; i++)
+    printf("argv[%d] = [%s]\n", i, argv[i]);
+  exit(0);
+}
+\end{lstlisting}
+We add \texttt{\$U/\_args\textbackslash} to the \texttt{UPROGS} list in \texttt{Makefile}.
+
+\subsubsection{Utility Implementation for Linux: args\_linux.c}
+We write the equivalent C utility for Linux adhering to POSIX standards:
+
+\begin{lstlisting}[style=c]
+#include <stdio.h>
+
+int
+main(int argc, char *argv[])
+{
+  printf("argc = %d\n", argc);
+  for(int i = 0; i < argc; i++)
+    printf("argv[%d] = [%s]\n", i, argv[i]);
+  return 0;
+}
+\end{lstlisting}
+We compile the program using \texttt{gcc}:
+\begin{lstlisting}[style=bash]
+➜  shtest gcc -o args args_linux.c
+\end{lstlisting}
+
+\subsubsection{Side-by-Side Execution}
+We run the exact same command lines in both shells:
+
+\begin{lstlisting}[style=bash]
+# ------------------------------------------------------------- GNU bash (Linux)
+➜  shtest ./args one    two    three
+argc = 4
+argv[0] = [./args]
+argv[1] = [one]
+argv[2] = [two]
+argv[3] = [three]
+
+➜  shtest ./args *.c "x y"
+argc = 3
+argv[0] = [./args]
+argv[1] = [args_linux.c]
+argv[2] = [x y]
+
+➜  shtest ./args $HOME
+argc = 2
+argv[0] = [./args]
+argv[1] = [/home/ionut]
+
+➜  shtest ./args 'single quoted'
+argc = 2
+argv[0] = [./args]
+argv[1] = [single quoted]
+\end{lstlisting}
+
+\begin{lstlisting}[style=bash]
+# ------------------------------------------------------------- xv6 shell (QEMU)
+$ args one    two    three
+argc = 4
+argv[0] = [args]
+argv[1] = [one]
+argv[2] = [two]
+argv[3] = [three]
+
+$ args *.c "x y"
+argc = 4
+argv[0] = [args]
+argv[1] = [*.c]
+argv[2] = ["x]
+argv[3] = [y"]
+
+$ args $HOME
+argc = 2
+argv[0] = [args]
+argv[1] = [$HOME]
+
+$ args 'single quoted'
+argc = 3
+argv[0] = [args]
+argv[1] = ['single]
+argv[2] = [quoted']
+\end{lstlisting}
+
+\subsubsection*{Observe:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Paste both outputs for args *.c "x y". How many arguments did each program receive?}
+    \begin{itemize}[noitemsep, topsep=2pt]
+        \item \textbf{GNU bash output:}
+\begin{lstlisting}[style=bash]
+argc = 3
+argv[0] = [./args]
+argv[1] = [args_linux.c]
+argv[2] = [x y]
+\end{lstlisting}
+        The Linux program received \textbf{3 arguments} (\texttt{argc = 3}).
+        \item \textbf{xv6 shell output:}
+\begin{lstlisting}[style=bash]
+argc = 4
+argv[0] = [args]
+argv[1] = [*.c]
+argv[2] = ["x]
+argv[3] = [y"]
+\end{lstlisting}
+        The xv6 program received \textbf{4 arguments} (\texttt{argc = 4}).
+    \end{itemize}
+
+    \item \textbf{So who turns *.c into file names and removes the quotes: the program, the kernel, or the shell?}\\[0.2em]
+    \textbf{The shell.} This experiment provides conclusive proof.\\
+    Neither the target binary (\texttt{args}) nor the kernel performs wildcard expansion or quotation stripping. In both Linux and xv6, the binary code of \texttt{args} does nothing more than iterate over whatever pointers are already populated in \texttt{argv}. The kernel's \texttt{exec} system call simply transfers the array of string pointers given to it into the newly loaded process's address space without altering their contents.\\
+    In Linux, \texttt{bash} inspects the line before invoking \texttt{exec}, expands \texttt{*.c} against filesystem entries, strips the enclosing double quotes from \texttt{"x y"}, and treats \texttt{x y} as a single argument containing a space.\\
+    In xv6, \texttt{user/sh.c} does not possess globbing or quotation-parsing logic; it merely tokenizes the line on whitespace. Therefore, \texttt{*.c}, \texttt{"x}, and \texttt{y"} are handed directly to the kernel and onto \texttt{args} as raw, unmodified strings.
+
+    \item \textbf{What happened to the extra spaces in one    two    three?}\\[0.2em]
+    In both shells, consecutive spaces are treated strictly as \textbf{token delimiters}. When the shell's lexical scanner encounters whitespace, it consumes all contiguous spaces until the next non-whitespace character is reached. The tokens (\texttt{one}, \texttt{two}, and \texttt{three}) are extracted and stored into distinct array slots in \texttt{argv}; the whitespace characters themselves are discarded and never passed to the invoked program.
+\end{enumerate}
+
+% ------------------------------------------------------------------------------
+\subsection{Part 4. Read the shell}
+
+\subsubsection{Source Code Inspection of user/sh.c}
+Inside the xv6 repository (\texttt{\~/xv6-riscv}), we inspect the structure and implementation details of the shell:
+
+\begin{lstlisting}[style=bash]
+➜  xv6-riscv git:(riscv) wc -l user/sh.c
+499 user/sh.c
+
+➜  xv6-riscv git:(riscv) grep -n "#define" user/sh.c
+8:#define EXEC  1
+9:#define REDIR 2
+10:#define PIPE  3
+11:#define LIST  4
+12:#define BACK  5
+14:#define MAXARGS 10
+
+➜  xv6-riscv git:(riscv) grep -n "case " user/sh.c
+75:  case EXEC:
+83:  case REDIR:
+93:  case LIST:
+101:  case PIPE:
+125:  case BACK:
+284:  case 0:
+286:  case '|':
+287:  case '(':
+288:  case ')':
+289:  case ';':
+290:  case '&':
+291:  case '<':
+294:  case '>':
+391:    case '<':
+394:    case '>':
+397:    case '+': // >>
+469:  case EXEC:
+475:  case REDIR:
+481:  case PIPE:
+487:  case LIST:
+493:  case BACK:
+
+➜  xv6-riscv git:(riscv) grep -n "cd" user/sh.c | head -5
+166:    if (cmd[0] == 'c' && cmd[1] == 'd' && cmd[2] == ' ') {
+167:      // Chdir must be called by the parent, not the child.
+168:      cmd[strlen(cmd) - 1] = 0; // chop \n
+169:      if (chdir(cmd + 3) < 0)
+170:        fprintf(2, "cannot cd %s\n", cmd + 3);
+\end{lstlisting}
+
+\subsubsection{Architecture of the xv6 Command Interpreter}
+The parser in \texttt{user/sh.c} models commands as an abstract syntax tree of polymorphic command structures sharing a common header (\texttt{struct cmd \{ int type; \}}):
+\begin{itemize}[noitemsep]
+    \item \texttt{struct execcmd}: Holds program arguments (\texttt{argv}) for \texttt{exec()}.
+    \item \texttt{struct redircmd}: Holds target file, flags, and file descriptor for redirection.
+    \item \texttt{struct pipecmd}: Contains \texttt{left} and \texttt{right} subcommands connected via an anonymous pipe.
+    \item \texttt{struct listcmd}: Contains subcommands executed in sequence (\texttt{;}).
+    \item \texttt{struct backcmd}: Wraps a subcommand to be spawned asynchronously (\texttt{\&}).
+\end{itemize}
+
+\subsubsection*{Observe:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Name the five kinds of command the xv6 shell knows and the character that produces each.}
+    \begin{enumerate}[label=\arabic*., noitemsep, topsep=2pt]
+        \item \textbf{\texttt{EXEC}} (Type 1): An ordinary executable command; produced by regular word tokens delimited by whitespace.
+        \item \textbf{\texttt{REDIR}} (Type 2): Stream redirection; produced by \textbf{\texttt{<}} (input redirect), \textbf{\texttt{>}} (output overwrite), and \textbf{\texttt{>>}} (output append, internal token \texttt{+}).
+        \item \textbf{\texttt{PIPE}} (Type 3): Pipeline execution; produced by the pipe symbol \textbf{\texttt{|}}.
+        \item \textbf{\texttt{LIST}} (Type 4): Sequential execution; produced by the semicolon \textbf{\texttt{;}}.
+        \item \textbf{\texttt{BACK}} (Type 5): Asynchronous background execution; produced by the ampersand \textbf{\texttt{\&}}.
+    \end{enumerate}
+
+    \item \textbf{Where is cd handled, and why is it not run as a separate program?}\\[0.2em]
+    \textbf{Where it is handled:} \texttt{cd} is handled directly inside the main loop of \texttt{main()} in \texttt{user/sh.c} (lines 166--170), preceding the call to \texttt{fork1()}:
+\begin{lstlisting}[style=c]
+if (cmd[0] == 'c' && cmd[1] == 'd' && cmd[2] == ' ') {
+  // Chdir must be called by the parent, not the child.
+  cmd[strlen(cmd) - 1] = 0; // chop \n
+  if (chdir(cmd + 3) < 0)
+    fprintf(2, "cannot cd %s\n", cmd + 3);
+}
+\end{lstlisting}
+    \textbf{Why it cannot be an external program:} In UNIX process architecture, every process maintains its own current working directory in kernel memory (in xv6, stored in \texttt{struct proc -> cwd}). A child process created via \texttt{fork()} receives a duplicate copy of the parent's \texttt{cwd}. If \texttt{cd} were an independent external binary (e.g., \texttt{/bin/cd}), the shell would fork a child process, the child would call \texttt{chdir()} to modify its own directory, and then exit. The parent shell process would remain unaffected in its original directory. Therefore, changing the shell's working directory \textbf{must} be performed by the parent process itself via a built-in command.
+
+    \item \textbf{Search sh.c for any code that handles * or \$. What does that explain about Part 2?}\\[0.2em]
+    Inspecting \texttt{user/sh.c} for \texttt{*} and \texttt{\$} reveals that neither character appears anywhere in the tokenization table or parsing routines:
+\begin{lstlisting}[style=c]
+char whitespace[] = " \t\r\n\v";
+char symbols[] = "<|>&;()";
+\end{lstlisting}
+    Because \texttt{*} and \texttt{\$} are neither whitespace nor recognized syntax symbols, \texttt{gettoken()} treats them as standard alphanumeric characters (type \texttt{'a'}), packaging them directly into \texttt{argv}.\\
+    This confirms the empirical observations from Part 2 and Part 3: xv6 does not expand \texttt{ls *} because it lacks globbing logic, and it outputs \texttt{\$HOME} literally because it has no variable lookup table.
+\end{enumerate}
+
+% ==============================================================================
+\section{Conclusion}
+
+Through this laboratory work, I investigated operating system concepts from the user-kernel interface, contrasting the production-grade GNU \texttt{bash} shell with the minimalist, pedagogical xv6 shell.
+
+By fixing and verifying the \texttt{sleep} utility in xv6, I observed how user-space libraries and applications interact with evolving kernel system calls across ABI revisions. The empirical side-by-side comparison between \texttt{bash} and xv6 revealed the core responsibilities of a Unix shell: coordinating processes via \texttt{fork()}, managing execution images via \texttt{exec()}, synchronizing lifecycles via \texttt{wait()}, and orchestrating stream redirection via \texttt{pipe()} and \texttt{dup()}. 
+
+By developing and executing the \texttt{args} argument-inspection utility across both environments, I established a clear separation of concerns in Unix system architecture. The experiment proved that pathname wildcard expansion, environment variable substitution, and quote removal are purely user-space syntactic preprocessing duties handled by the shell, rather than services provided by the kernel or individual applications. Finally, dissecting \texttt{user/sh.c} demystified shell internals, demonstrating how an elegant 500-line C program leverages recursive descent parsing to construct an abstract syntax tree of commands that executes with remarkable efficiency.
+
+\end{document}
