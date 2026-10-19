@@ -1,0 +1,501 @@
+\documentclass{labreport}
+
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{pifont}
+\usepackage{tabularx}
+\usepackage{booktabs}
+
+% Colors
+\definecolor{codebg}{RGB}{248, 249, 251}
+\definecolor{codeborder}{RGB}{218, 222, 229}
+\definecolor{linkcolor}{RGB}{20, 60, 120}
+\definecolor{zshgreen}{RGB}{0, 160, 80}
+\definecolor{zshred}{RGB}{200, 30, 30}
+
+% Hyperref setup with subtle link colors
+\hypersetup{
+    colorlinks=true,
+    linkcolor=linkcolor,
+    filecolor=linkcolor,
+    urlcolor=linkcolor,
+    citecolor=linkcolor
+}
+
+% Code and terminal listings
+\lstdefinestyle{bash}{
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeborder},
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=flexible,
+    numbers=none,
+    xleftmargin=3pt,
+    xrightmargin=3pt,
+    framesep=4pt
+}
+
+\lstdefinestyle{c}{
+    language=C,
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeborder},
+    keywordstyle=\color{blue!85!black}\bfseries,
+    commentstyle=\color{gray!80!black}\itshape,
+    stringstyle=\color{teal!80!black},
+    numbers=left,
+    numberstyle=\tiny\color{gray!80!black},
+    numbersep=8pt,
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=flexible,
+    tabsize=2,
+    xleftmargin=14pt,
+    xrightmargin=3pt,
+    framesep=4pt
+}
+
+\lstset{
+    extendedchars=true,
+    literate=
+        {➜}{{\textcolor{zshgreen}{\ding{220}}}}{1}
+        {├─}{|-\,}{2}
+        {└─}{\`-\,}{2}
+        {├}{|}{1}
+        {─}{-}{1}
+        {└}{\`}{1}
+        {✗}{{\textcolor{zshred}{\ding{55}}}}{1}
+}
+
+% Section styling for clean document structure
+\titleformat{\section}
+  {\large\bfseries}{\thesection}{0.8em}{}[\vspace{1pt}\hrule height 0.5pt]
+\titleformat{\subsection}
+  {\normalsize\bfseries}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}
+  {\small\bfseries}{\thesubsubsection}{0.8em}{}
+
+\begin{document}
+
+\labtitle
+    {5}
+    {The File System with Your Own Hands}
+    {st. gr. FAF-243}
+    {Șoimu Ionuț}
+    {asist. univ.\\[0.15cm] Reițman Patricia}
+
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Lab 5: Track A -- The File System with Your Own Hands}
+
+\subsection{Before you start}
+
+\subsubsection*{Purpose and Scope}
+The filesystem is one of the foundational abstractions provided by modern operating systems. The purpose of this laboratory work is to inspect and verify the physical and logical architecture of the Linux filesystem directly on bare-metal hardware. 
+
+We explore the unified directory tree and POSIX file classifications, investigate the fundamental separation between filesystem names and underlying inode structures, examine hard links versus symbolic links, analyze directory link-count mechanics, evaluate apparent file sizes against physical block allocations (sparse files), and dissect the multi-tiered permission model (discretionary access control, umask arithmetic, directory traversal rules, and special bits such as SetUID and Sticky Bit). Finally, we inspect how storage disks, partitions, and runtime kernel objects are surfaced through virtual pseudo-filesystems.
+
+\subsubsection*{Environment Setup and User Identification}
+As instructed, all experiments are performed as an unprivileged standard user (\texttt{ionut}) rather than \texttt{root}, ensuring that kernel access-control checks and permission boundaries are strictly enforced.
+
+\begin{lstlisting}[style=bash]
+➜  ~ whoami
+ionut
+➜  ~ uname -a
+Linux arch 7.2.9-2-cachyos #1 SMP PREEMPT_DYNAMIC Fri, 09 Oct 2026 15:36:46 +0000 x86_64 GNU/Linux
+➜  ~ uptime
+ 15:56:40 up  2:42,  1 user,  load average: 0.67, 0.64, 0.82
+➜  ~ mkdir -p ~/os-lab5 && cd ~/os-lab5
+\end{lstlisting}
+
+% ------------------------------------------------------------------------------
+\subsection{Part 1. The tree and the file types}
+
+\subsubsection{Hierarchical Tree Navigation and Type Inspection}
+We inspect the root directory and examine representative filesystem entries using \texttt{ls -ld}, \texttt{file}, and \texttt{du}:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab5 ls /
+bin   dev  home  lib64	opt   root  sbin  sys  usr
+boot  etc  lib	 mnt	proc  run   srv   tmp  var
+
+➜  os-lab5 ls -ld /etc /etc/passwd /bin /dev/null /tmp
+drwxr-xr-x  1 root root 3862 Oct 12 15:29 /etc
+-rw-r--r--  1 root root 2182 Jun 25 14:34 /etc/passwd
+lrwxrwxrwx  1 root root    7 Oct 12  2025 /bin -> usr/bin
+crw-rw-rw-  1 root root 1, 3 Oct 12 13:14 /dev/null
+drwxrwxrwt 18 root root  440 Oct 12 15:55 /tmp
+
+➜  os-lab5 ls -l /dev | head -10
+total 0
+crw-r--r--   1 root  root    10,   235 Oct 12 13:14 autofs
+drwxr-xr-x   2 root  root          240 Oct 12 13:14 block
+crw-rw----   1 root  disk    10,   234 Oct 12 13:14 btrfs-control
+drwxr-xr-x   3 root  root           60 Oct 12 13:14 bus
+drwxr-xr-x   2 root  root         5240 Oct 12 15:17 char
+crw-------   1 root  tty      5,     1 Oct 12 13:14 console
+lrwxrwxrwx   1 root  root           11 Oct 12 13:14 core -> /proc/kcore
+drwxr-xr-x  14 root  root          280 Oct 12 13:14 cpu
+crw-------   1 root  root    10,   259 Oct 12 13:14 cpu_dma_latency
+
+➜  os-lab5 file /usr/bin/ls /etc/passwd /bin
+/usr/bin/ls: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=d572a7b5009dbbcb275c2e516be58e706ae248a9, for GNU/Linux 4.4.0, stripped
+/etc/passwd: ASCII text
+/bin:        symbolic link to usr/bin
+
+➜  os-lab5 du -sh /var/log 2>/dev/null ; du -sh /usr 2>/dev/null
+1.8G	/var/log
+24G	/usr
+\end{lstlisting}
+
+\subsubsection*{Observe:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{For each path in the second line, write its type from the first letter of ls -l.}
+    \begin{itemize}[noitemsep, topsep=2pt]
+        \item \texttt{/etc}: \textbf{\texttt{d}} -- Directory (a container holding mapping pairs of names to inodes).
+        \item \texttt{/etc/passwd}: \textbf{\texttt{-}} -- Regular file (standard sequential byte stream on disk).
+        \item \texttt{/bin}: \textbf{\texttt{l}} -- Symbolic link (a file whose content is a path string to another target).
+        \item \texttt{/dev/null}: \textbf{\texttt{c}} -- Character device (a stream-oriented hardware/kernel device driver).
+        \item \texttt{/tmp}: \textbf{\texttt{d}} -- Directory (with sticky bit \texttt{t} set).
+    \end{itemize}
+
+    \item \textbf{What is /bin on your system: a directory or a link, and to where?}\\[0.2em]
+    On this system, \texttt{/bin} is a \textbf{symbolic link} pointing to \texttt{usr/bin} (\texttt{/bin -> usr/bin}). This reflects modern Linux distributions' adoption of the \textbf{UsrMerge} architecture, which consolidates all essential system binaries into \texttt{/usr/bin} while preserving backward compatibility via symlinks at the root level.
+
+    \item \textbf{Find one character device and one block device in /dev.}
+    \begin{itemize}[noitemsep, topsep=2pt]
+        \item \textbf{Character device:} \texttt{/dev/null} (major 1, minor 3) or \texttt{/dev/console} (major 5, minor 1) or \texttt{/dev/autofs}.
+        \item \textbf{Block device:} \texttt{/dev/nvme1n1p2} (major 259, minor 8) or \texttt{/dev/zram0} (major 253, minor 0), representing block-addressable persistent or memory storage.
+    \end{itemize}
+
+    \item \textbf{Which is bigger on your laptop, /var/log or /usr, and by roughly how much?}\\[0.2em]
+    \texttt{/usr} (24 GB) is substantially larger than \texttt{/var/log} (1.8 GB) by approximately \textbf{22.2 GB} (more than 13 times larger). This is expected because \texttt{/usr} houses all installed software binaries, libraries, header files, and shared static data, whereas \texttt{/var/log} contains only system telemetry and service logs.
+\end{enumerate}
+
+% ------------------------------------------------------------------------------
+\subsection{Part 2. Inodes and links}
+
+\subsubsection{Inodes, Hard Links, and Unlinking}
+We create a file, inspect its inode metadata using \texttt{stat} and \texttt{ls -li}, create a hard link, remove the initial directory entry, and verify data accessibility:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab5 echo hello > notes.txt
+➜  os-lab5 stat notes.txt
+  File: notes.txt
+  Size: 6         	Blocks: 8          IO Block: 4096   regular file
+Device: 0,47	Inode: 10245582    Links: 1
+Access: (0644/-rw-r--r--)  Uid: ( 1000/   ionut)   Gid: ( 1000/   ionut)
+Access: 2026-10-12 15:57:54.278555788 +0300
+Modify: 2026-10-12 15:57:54.278555788 +0300
+Change: 2026-10-12 15:57:54.278555788 +0300
+ Birth: 2026-10-12 15:57:54.278555788 +0300
+
+➜  os-lab5 ls -li notes.txt
+10245582 -rw-r--r-- 1 ionut ionut 6 Oct 12 15:57 notes.txt
+
+➜  os-lab5 ln notes.txt hard.txt
+➜  os-lab5 ls -li notes.txt hard.txt
+10245582 -rw-r--r-- 2 ionut ionut 6 Oct 12 15:57 hard.txt
+10245582 -rw-r--r-- 2 ionut ionut 6 Oct 12 15:57 notes.txt
+
+➜  os-lab5 rm notes.txt
+➜  os-lab5 cat hard.txt ; ls -li hard.txt
+hello
+10245582 -rw-r--r-- 1 ionut ionut 6 Oct 12 15:57 hard.txt
+\end{lstlisting}
+
+\subsubsection{Symbolic Links and Dangling References}
+We create a soft (symbolic) link pointing to \texttt{hard.txt}, inspect inode numbers, remove the target, and observe the broken reference:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab5 ln -s hard.txt soft.txt
+➜  os-lab5 ls -li hard.txt soft.txt
+10245582 -rw-r--r-- 1 ionut ionut 6 Oct 12 15:57 hard.txt
+10245583 lrwxrwxrwx 1 ionut ionut 8 Oct 12 15:57 soft.txt -> hard.txt
+
+➜  os-lab5 cat soft.txt
+hello
+
+➜  os-lab5 rm hard.txt
+➜  os-lab5 cat soft.txt
+cat: soft.txt: No such file or directory
+
+➜  os-lab5 ls -l soft.txt
+lrwxrwxrwx 1 ionut ionut 8 Oct 12 15:57 soft.txt -> hard.txt
+\end{lstlisting}
+
+\subsubsection{Directory Link Counts and Sparse Files}
+We examine directory link dynamics and compare apparent byte size against allocated disk space:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab5 mkdir d ; ls -ld d
+drwxr-xr-x 1 ionut ionut 0 Oct 12 15:58 d
+➜  os-lab5 mkdir d/x d/y ; ls -ld d
+drwxr-xr-x 1 ionut ionut 4 Oct 12 15:58 d
+
+➜  os-lab5 echo x > one.txt ; ls -l one.txt ; du -h one.txt
+-rw-r--r-- 1 ionut ionut 2 Oct 12 15:58 one.txt
+4.0K	one.txt
+
+➜  os-lab5 truncate -s 1G big.img ; ls -lh big.img ; du -h big.img
+-rw-r--r-- 1 ionut ionut 1.0G Oct 12 15:58 big.img
+0	big.img
+➜  os-lab5 rm big.img
+\end{lstlisting}
+
+\subsubsection*{Observe:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Which number in stat is the inode, and which tells how many names the file has?}\\[0.2em]
+    In the output of \texttt{stat}, the field \texttt{Inode:} gives the inode number (here \textbf{\texttt{10245582}}), and the field \texttt{Links:} indicates the reference count of directory entries pointing to that inode (\textbf{\texttt{Links: 1}}, increasing to \textbf{\texttt{Links: 2}} after \texttt{ln}).
+
+    \item \textbf{After rm notes.txt, why could you still read hard.txt? What does rm really remove?}\\[0.2em]
+    In Unix filesystems, a file's metadata and data blocks are owned by its \textbf{inode}, not by any directory name. A hard link is simply an additional directory entry pointing directly to that exact same inode number. When you run \texttt{rm notes.txt}, the system executes the \texttt{unlink()} system call: it removes only the directory entry named \texttt{notes.txt} from the folder and decrements the inode's \texttt{nlink} counter from 2 to 1. Because \texttt{hard.txt} still references inode 10245582 and \texttt{nlink} remains $> 0$, the inode and its underlying disk blocks are preserved intact.
+
+    \item \textbf{Why did cat soft.txt fail at the end, although soft.txt still exists? How big is soft.txt and why exactly that size?}\\[0.2em]
+    A symbolic link does not point to an inode; its data payload consists solely of a pathname string (\texttt{"hard.txt"}). When \texttt{cat soft.txt} runs, the kernel follows the link and attempts to open the file named by that target string. Because \texttt{hard.txt} was removed, the lookup fails with \texttt{No such file or directory} (a dangling symlink).\\
+    \texttt{soft.txt} has a reported size of exactly \textbf{8 bytes} because the target string \texttt{"hard.txt"} contains exactly 8 ASCII characters. In symbolic links, the file size is always equal to the character length of the target destination path.
+
+    \item \textbf{A new directory has 2 links, and 4 after you create two subdirectories. Explain where each link comes from.}\\[0.2em]
+    In classic Unix filesystems (such as ext4), directory links arise from:
+    \begin{itemize}[noitemsep, topsep=2pt]
+        \item For a newly created directory \texttt{d}:
+        \begin{enumerate}[label=(\alph*), noitemsep]
+            \item Link 1: The entry named \texttt{d} inside the parent directory.
+            \item Link 2: The self-referential entry \texttt{.} inside \texttt{d} itself.
+        \end{enumerate}
+        \item After creating subdirectories \texttt{d/x} and \texttt{d/y}:
+        \begin{enumerate}[label=(\alph*), resume, noitemsep]
+            \item Link 3: The parent reference \texttt{..} inside \texttt{d/x}.
+            \item Link 4: The parent reference \texttt{..} inside \texttt{d/y}.
+        \end{enumerate}
+    \end{itemize}
+    Each child subdirectory contains a \texttt{..} entry pointing back to \texttt{d}, incrementing \texttt{d}'s link count by 1. \textit{(Note: modern btrfs filesystems report internal sub-item counts differently, displaying 0 initially and 4 upon subfolder creation)}
+
+    \item \textbf{Why does a 2-byte file use 4.0K, and a 1 GB file use 0?}\\[0.2em]
+    Filesystems allocate persistent storage in discrete chunks called \textbf{disk blocks} (typically 4096 bytes / 4.0 KB). Even though \texttt{one.txt} contains only 2 bytes of payload (\texttt{'x'} and \verb|'\n'|), the kernel must allocate at least one full 4.0 KB block to house it.\\
+    Conversely, \texttt{truncate -s 1G big.img} creates a \textbf{sparse file}. The kernel updates the file's inode metadata to record an apparent logical length of 1 GB, but allocates zero physical storage blocks on disk. The unwritten span is treated as a ``hole''; reads return zero-filled buffers on demand, and \texttt{du} accurately reports 0 allocated disk usage.
+\end{enumerate}
+
+% ------------------------------------------------------------------------------
+\subsection{Part 3. Permissions}
+
+\subsubsection{File and Directory Permission Tests}
+We explore permission masks, umask effects, directory read/execute semantics, and special bits:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab5 echo secret > s.txt
+➜  os-lab5 chmod 600 s.txt ; ls -l s.txt
+-rw------- 1 ionut ionut 7 Oct 12 15:59 s.txt
+
+➜  os-lab5 chmod 000 s.txt ; cat s.txt
+cat: s.txt: Permission denied
+
+➜  os-lab5 chmod u+r s.txt ; cat s.txt
+secret
+
+➜  os-lab5 umask ; touch new.txt ; mkdir newdir ; ls -ld new.txt newdir
+0022
+-rw-r--r-- 1 ionut ionut 0 Oct 12 15:59 new.txt
+drwxr-xr-x 1 ionut ionut 0 Oct 12 15:59 newdir
+
+➜  os-lab5 mkdir box ; echo hi > box/f
+➜  os-lab5 chmod u=r,go= box ; ls box ; cat box/f
+f
+cat: box/f: Permission denied
+
+➜  os-lab5 chmod u=x,go= box ; ls box ; cat box/f
+ls: cannot open directory 'box': Permission denied
+hi
+
+➜  os-lab5 chmod 755 box
+➜  os-lab5 ls -l /usr/bin/passwd ; ls -ld /tmp
+-rwsr-xr-x  1 root root  88984 Jul 31 22:01 /usr/bin/passwd
+drwxrwxrwt 17 root root    420 Oct 12 15:58 /tmp
+
+➜  os-lab5 cat /etc/shadow
+cat: /etc/shadow: Permission denied
+➜  os-lab5 ls -l /etc/shadow
+-rw------- 1 root root 1046 Jun 25 14:34 /etc/shadow
+\end{lstlisting}
+
+\subsubsection*{Observe:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Write 600, 644, 755 and 700 as rwx strings, and give one real use for each.}
+    \begin{itemize}[noitemsep, topsep=2pt]
+        \item \textbf{600} = \texttt{-rw-------}: Owner read/write, no access for anyone else. Used for confidential private keys (e.g., \texttt{\textasciitilde/.ssh/id\_rsa}, \texttt{\textasciitilde/.ssh/id\_ed25519}) and sensitive personal configuration files.
+        \item \textbf{644} = \texttt{-rw-r--r--}: Owner read/write, group and others read-only. Standard for public text files, system configuration files (e.g., \texttt{/etc/passwd}), and static web assets.
+        \item \textbf{755} = \texttt{-rwxr-xr-x}: Owner full access, group and others read and execute. Standard for executable system binaries (e.g., \texttt{/usr/bin/ls}) and publicly traversable directories.
+        \item \textbf{700} = \texttt{drwx------}: Owner full access, no access for group or others. Used for private user directories requiring strict isolation (e.g., \texttt{\textasciitilde/.ssh}, \texttt{\textasciitilde/.gnupg}, root's \texttt{/root}).
+    \end{itemize}
+
+    \item \textbf{With chmod 000 you own the file but cannot read it. Why does ownership not help?}\\[0.2em]
+    Linux evaluates discretionary access permissions according to a strict hierarchical priority check:
+    \begin{center}
+    \textbf{1. Is UID equal to file owner?} $\longrightarrow$ \textbf{Apply owner bits only.} Do not check group or others.
+    \end{center}
+    When \texttt{chmod 000} is set, the owner permission triple is \texttt{---} (0). Because the accessing user is the file owner, the kernel checks the owner bits, detects that read permission is explicitly absent, and immediately rejects the \texttt{open()} request with \texttt{EACCES} (\textit{Permission denied}). Ownership grants the right to alter permissions via \texttt{chmod}, but does not grant automatic read/write access unless owner permission bits are set.
+
+    \item \textbf{What is your umask, and how does it explain the permissions of new.txt and newdir?}\\[0.2em]
+    The active umask is \textbf{\texttt{0022}} (octal).\\
+    When creating files and directories, the operating system applies the umask as a bitwise exclusion filter:
+    \begin{itemize}[noitemsep, topsep=2pt]
+        \item \textbf{Files:} Base mode is \texttt{0666} (\texttt{rw-rw-rw-}). Applying the umask:
+        \[
+        0666 \ \& \ \sim(0022) = 0644 \quad (\texttt{-rw-r--r--})
+        \]
+        \item \textbf{Directories:} Base mode is \texttt{0777} (\texttt{rwxrwxrwx}). Applying the umask:
+        \[
+        0777 \ \& \ \sim(0022) = 0755 \quad (\texttt{drwxr-xr-x})
+        \]
+    \end{itemize}
+    This prevents group and other users from having write permissions on newly generated files by default while keeping them readable.
+
+    \item \textbf{Explain the box experiment: what does r allow on a directory, and what does x allow?}\\[0.2em]
+    On directories, \texttt{r} and \texttt{x} serve fundamentally distinct roles:
+    \begin{itemize}[noitemsep, topsep=2pt]
+        \item \textbf{Read (\texttt{r}):} Grants permission to read the directory's raw entry list (names of items). With \texttt{chmod u=r}, \texttt{ls box} succeeds and lists filename \texttt{f}. However, without \texttt{x}, the kernel cannot traverse into the directory to resolve \texttt{f}'s inode, so \texttt{cat box/f} fails with \texttt{Permission denied}.
+        \item \textbf{Execute (\texttt{x}):} Grants permission to traverse (search) through the directory. With \texttt{chmod u=x}, \texttt{ls box} fails with \texttt{Permission denied} because directory enumeration is prohibited; however, \texttt{cat box/f} succeeds and prints \texttt{hi} because the user knows the target path and has permission to traverse the directory to access the file.
+    \end{itemize}
+
+    \item \textbf{What do the s in /usr/bin/passwd and the t in /tmp mean, and why does passwd need the s?}\\[0.2em]
+    \begin{itemize}[noitemsep, topsep=2pt]
+        \item \textbf{The \texttt{s} in \texttt{/usr/bin/passwd}} represents the \textbf{SetUID (Set User ID)} bit (\texttt{04000}). When executed, the process runs with the privileges of the file's owner (\texttt{root}) rather than the invoking user.
+        \item \textbf{Why \texttt{passwd} needs \texttt{s}:} Standard users must be able to change their passwords, but password hashes are stored in \texttt{/etc/shadow}, which has permissions \texttt{0600} owned by \texttt{root}. An unprivileged user cannot write to \texttt{/etc/shadow}. By making \texttt{passwd} SetUID root, the program temporarily executes with root authority, validates the user's old credentials, updates \texttt{/etc/shadow}, and terminates safely.
+        \item \textbf{The \texttt{t} in \texttt{/tmp}} represents the \textbf{Sticky Bit} (\texttt{01000}) on a directory. In a world-writable directory (\texttt{0777}), any user could delete any other user's files. The sticky bit enforces the restriction that only the file's owner (or \texttt{root}) may delete or rename a file within that directory.
+    \end{itemize}
+\end{enumerate}
+
+% ------------------------------------------------------------------------------
+\subsection{Part 4. Disks and the kernel as files}
+
+\subsubsection{Storage Devices, Mount Tables, and /proc Introspection}
+\begin{lstlisting}[style=bash]
+➜  os-lab5 lsblk
+NAME        MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS
+zram0       253:0    0     4G  0 disk [SWAP]
+nvme0n1     259:0    0 476.9G  0 disk 
+├─nvme0n1p1 259:1    0   100M  0 part 
+├─nvme0n1p2 259:2    0    16M  0 part 
+├─nvme0n1p3 259:3    0  96.8G  0 part 
+├─nvme0n1p4 259:4    0   736M  0 part 
+└─nvme0n1p5 259:5    0 379.3G  0 part 
+nvme1n1     259:6    0 931.5G  0 disk 
+├─nvme1n1p1 259:7    0     1G  0 part /boot
+└─nvme1n1p2 259:8    0 930.5G  0 part /home
+                                      /var/log
+                                      /var/cache/pacman/pkg
+                                      /
+
+➜  os-lab5 df -h /
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/nvme1n1p2  931G  833G   94G  90% /
+
+➜  os-lab5 mount | grep " / "
+/dev/nvme1n1p2 on / type btrfs (rw,relatime,compress=zstd:3,ssd,discard=async,space_cache=v2,subvolid=256,subvol=/@)
+
+➜  os-lab5 grep -c processor /proc/cpuinfo
+12
+
+➜  os-lab5 head -3 /proc/meminfo
+MemTotal:       13326596 kB
+MemFree:         1817992 kB
+MemAvailable:    9386644 kB
+
+➜  os-lab5 head -5 /proc/self/status
+Name:	head
+Umask:	0022
+State:	R (running)
+Tgid:	9728
+Ngid:	0
+
+➜  os-lab5 ls -l /proc/self/fd
+total 0
+lrwx------ 1 ionut ionut 64 Oct 12 15:59 0 -> /dev/pts/1
+lrwx------ 1 ionut ionut 64 Oct 12 15:59 1 -> /dev/pts/1
+lrwx------ 1 ionut ionut 64 Oct 12 15:59 2 -> /dev/pts/1
+lr-x------ 1 ionut ionut 64 Oct 12 15:59 3 -> /proc/9728/fd
+\end{lstlisting}
+
+\subsubsection*{Observe:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Draw your disk: disk name, partitions, which one is mounted at / and with what file system type.}
+    \begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{lllll}
+    \toprule
+    \textbf{Disk Device} & \textbf{Partition} & \textbf{Size} & \textbf{Filesystem} & \textbf{Mountpoint} \\
+    \midrule
+    \texttt{nvme1n1} (931.5G) & \texttt{nvme1n1p1} & 1.0 GB & vfat & \texttt{/boot} \\
+    & \textbf{\texttt{nvme1n1p2}} & \textbf{930.5 GB} & \textbf{btrfs} (zstd:3) & \textbf{\texttt{/}}, \texttt{/home}, \texttt{/var/log} \\
+    \addlinespace
+    \texttt{nvme0n1} (476.9G) & \texttt{nvme0n1p1-p5} & Multiple & NTFS/ext4 & Unmounted / Secondary OS \\
+    \texttt{zram0} (4.0G) & -- & 4.0 GB & swap & \texttt{[SWAP]} \\
+    \bottomrule
+    \end{tabular}
+    \caption{Storage topology: primary disk NVMe layout and mount configuration}
+    \end{table}
+
+    \item \textbf{How full is your root file system?}\\[0.2em]
+    The root filesystem (\texttt{/dev/nvme1n1p2}) is \textbf{90\% full}, having used 833 GB out of 931 GB, with 94 GB of available free storage remaining.
+
+    \item \textbf{How many CPU cores and how much RAM does your laptop have, according to /proc?}\\[0.2em]
+    \begin{itemize}[noitemsep, topsep=2pt]
+        \item \textbf{CPU Cores:} \textbf{12 logical cores} (\texttt{grep -c processor /proc/cpuinfo}).
+        \item \textbf{RAM:} \textbf{13,326,596 kB} ($\approx$ \textbf{13.3 GB}) total physical RAM, with 9.38 GB available for applications.
+    \end{itemize}
+
+    \item \textbf{/proc/self/status showed the name of a program. Which one, and why that one?}\\[0.2em]
+    It showed \texttt{Name: head}.\\
+    \texttt{/proc/self} is a magic symbolic link maintained dynamically by the Linux kernel. Whenever a process dereferences \texttt{/proc/self}, the kernel resolves it to the PID directory of the calling process itself (\texttt{/proc/<PID>/}). Because the command executed was \texttt{head -5 /proc/self/status}, the process opening and reading the file descriptor was \texttt{head}, so the kernel accurately reported \texttt{Name: head}.
+\end{enumerate}
+
+% ------------------------------------------------------------------------------
+\subsection{Stretch Goals (Optional)}
+
+\subsubsection*{Experiment A: Magic Numbers and File Type Identification}
+We compress a text file using \texttt{gzip} and inspect the file's raw header bytes using \texttt{file} and \texttt{xxd}:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab5 gzip -c /etc/passwd > notes.gz
+➜  os-lab5 file notes.gz
+notes.gz: gzip compressed data, was "passwd", last modified: Thu Jun 25 11:34:06 2026, from Unix, original size modulo 2^32 2182
+➜  os-lab5 xxd notes.gz | head -1
+00000000: 1f8b 0808 2e12 3d6a 0003 7061 7373 7764  ......=j..passwd
+\end{lstlisting}
+\textit{Result:} The first two bytes are \texttt{0x1F} and \texttt{0x8B} (\texttt{1f 8b}). These constitute the standardized \textbf{gzip magic number} defined in RFC 1952. The \texttt{file} utility reads these initial header bytes rather than relying on filename extensions to reliably identify file formats.
+
+\subsubsection*{Experiment C: Deleting a File that is Still Open}
+We hold an open file descriptor on a file, remove its directory entry, and observe descriptor status in \texttt{/proc}:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab5 echo "data" > openfile.txt
+➜  os-lab5 exec 3< openfile.txt
+➜  os-lab5 rm openfile.txt
+➜  os-lab5 ls -l /proc/$$/fd/3
+lr-x------ 1 ionut ionut 64 Oct 12 15:59 /proc/9730/fd/3 -> '/home/ionut/os-lab5/openfile.txt (deleted)'
+➜  os-lab5 exec 3<&-
+\end{lstlisting}
+\textit{Result:} The symlink in \texttt{/proc/<PID>/fd/3} indicates \texttt{/home/ionut/os-lab5/openfile.txt (deleted)}. The directory entry is unlinked immediately, but the inode and data blocks remain allocated and accessible to the process. The physical storage space is only freed by the kernel when the last file descriptor referring to the inode is closed via \texttt{exec 3<\&-} (or when the process exits).
+
+% ==============================================================================
+\section{Conclusion}
+
+Through this laboratory work, I explored the internal architecture and operational mechanisms of the Linux filesystem directly on a production system.
+
+The experiments highlighted the architectural division between directory trees and inode metadata. By investigating hard links, I observed that filenames are merely directory pointers to an inode; unlinking a filename decrements the reference counter but leaves data blocks accessible until all links and open process descriptors are closed. In contrast, symbolic links operate as independent files storing pathname strings, exhibiting dangling behavior when their targets are removed.
+
+Analyzing storage allocation demonstrated the distinction between apparent file size and physical disk blocks: small files consume a full block allocation unit (4.0 KB), whereas sparse files span gigabytes logically while consuming zero disk blocks. Examining permissions demystified discretionary access controls: owner bits take precedence regardless of user status, umask arithmetic enforces baseline privacy upon creation, directory read permissions govern name listing whereas execute permissions control path traversal, and special bits (SetUID and Sticky bit) enable secure privilege delegation and shared directory safety. Finally, introspecting `/proc` reinforced the Unix axiom that kernel state and devices are uniformly surfaced through file interfaces.
+
+\end{document}
