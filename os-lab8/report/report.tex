@@ -1,0 +1,540 @@
+\documentclass{labreport}
+
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{pifont}
+\usepackage{tabularx}
+\usepackage{booktabs}
+
+% Headheight adjustment for fancyhdr
+\setlength{\headheight}{28pt}
+\addtolength{\topmargin}{-13pt}
+
+% Colors
+\definecolor{codebg}{RGB}{248, 249, 251}
+\definecolor{codeborder}{RGB}{218, 222, 229}
+\definecolor{linkcolor}{RGB}{20, 60, 120}
+\definecolor{zshgreen}{RGB}{0, 160, 80}
+\definecolor{zshred}{RGB}{200, 30, 30}
+
+% Hyperref setup with subtle link colors
+\hypersetup{
+    colorlinks=true,
+    linkcolor=linkcolor,
+    filecolor=linkcolor,
+    urlcolor=linkcolor,
+    citecolor=linkcolor
+}
+
+% Code and terminal listings
+\lstdefinestyle{bash}{
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeborder},
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=flexible,
+    numbers=none,
+    xleftmargin=3pt,
+    xrightmargin=3pt,
+    framesep=4pt
+}
+
+\lstdefinestyle{c}{
+    language=C,
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeborder},
+    keywordstyle=\color{blue!85!black}\bfseries,
+    commentstyle=\color{gray!80!black}\itshape,
+    stringstyle=\color{teal!80!black},
+    numbers=left,
+    numberstyle=\tiny\color{gray!80!black},
+    numbersep=8pt,
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=flexible,
+    tabsize=2,
+    xleftmargin=14pt,
+    xrightmargin=3pt,
+    framesep=4pt
+}
+
+\lstset{
+    extendedchars=true,
+    literate=
+        {➜}{{\textcolor{zshgreen}{\ding{220}}}}{1}
+        {├─}{|-\,}{2}
+        {└─}{\`-\,}{2}
+        {├}{|}{1}
+        {─}{-}{1}
+        {└}{\`}{1}
+        {✗}{{\textcolor{zshred}{\ding{55}}}}{1}
+}
+
+% Section styling for clean document structure
+\titleformat{\section}
+  {\large\bfseries}{\thesection}{0.8em}{}[\vspace{1pt}\hrule height 0.5pt]
+\titleformat{\subsection}
+  {\normalsize\bfseries}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}
+  {\small\bfseries}{\thesubsubsection}{0.8em}{}
+
+\begin{document}
+
+\labtitle
+    {8}
+    {The Same Calls Inside Your Own OS: Process Management and IPC in xv6}
+    {st. gr. FAF-243}
+    {Șoimu Ionuț}
+    {asist. univ.\\[0.15cm] Reițman Patricia}
+
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Lab 8: Track B -- The Same Calls Inside Your Own OS (xv6)}
+
+\subsection{Before you start}
+
+\subsubsection*{Purpose and Scope}
+In Laboratory Work 7, we investigated process creation, binary image replacement, and stream redirection on a host Linux system using the GNU C Library (\texttt{glibc}) and the Linux 6.x kernel. The primary objective of Laboratory Work 8 is to bridge user-space software abstractions with low-level kernel internals by implementing and evaluating the \textbf{exact same process management and Inter-Process Communication (IPC) primitives} inside \textbf{xv6-riscv}, a modern re-implementation of Dennis Ritchie and Ken Thompson's Unix Version 6 targeting 64-bit RISC-V hardware.
+
+Unlike Linux user-space programs that rely on thousands of pages of standard library scaffolding, an xv6 user program executes directly on top of the bare-metal kernel interface. There is no \texttt{glibc}, no dynamic linker, and no complex runtime: every invocation of \texttt{fork()}, \texttt{exec()}, \texttt{wait()}, \texttt{pipe()}, \texttt{read()}, and \texttt{write()} transitions via RISC-V \texttt{ecall} instructions directly into the xv6 kernel trap handler.
+
+\subsubsection*{xv6 Workspace and Build Integration}
+Work is conducted in the repository tree \texttt{\textasciitilde/xv6-riscv}. In xv6, user-space utilities are compiled as standalone ELF binaries from \texttt{user/NAME.c} and embedded into the initial file system image (\texttt{fs.img}) created by \texttt{mkfs}. Adding a new program requires inserting \texttt{\$U/\_NAME\textbackslash} into the \texttt{UPROGS} definition within the \texttt{Makefile}:
+
+\begin{lstlisting}[style=bash]
+UPROGS=\
+    $U/_cat\
+    $U/_echo\
+    $U/_forktest\
+    $U/_grep\
+    $U/_init\
+    $U/_kill\
+    $U/_ln\
+    $U/_ls\
+    $U/_mkdir\
+    $U/_rm\
+    $U/_sh\
+    $U/_stressfs\
+    $U/_usertests\
+    $U/_grind\
+    $U/_wc\
+    $U/_zombie\
+    $U/_run\
+    $U/_pingpong\
+    $U/_primes\
+\end{lstlisting}
+
+Every target line begins with a leading tab character and concludes with a line-continuation backslash (\texttt{\textbackslash}). We verified the compilation and execution of xv6 using QEMU:
+
+\begin{lstlisting}[style=bash]
+➜  xv6-riscv make qemu
+qemu-system-riscv64 -machine virt -bios none -kernel kernel/kernel -m 128M -smp 3 -nographic -global virtio-mmio.force-legacy=false -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+
+xv6 kernel is booting
+
+hart 1 starting
+hart 2 starting
+init: starting sh
+$ 
+\end{lstlisting}
+
+% ==============================================================================
+\subsection{Part 1. run, inside xv6}
+
+\subsubsection{Concept and Program Structure}
+In Unix-like systems, the command-line shell executes commands through a classic three-step sequence:
+\begin{enumerate}
+    \item \textbf{Process Spawning (\texttt{fork}):} The shell duplicates its own address space, producing an identical child process.
+    \item \textbf{Program Invocation (\texttt{exec}):} The child process executes \texttt{exec()}, replacing its virtual memory image with the targeted binary.
+    \item \textbf{Process Synchronization (\texttt{wait}):} The parent suspends execution until the child completes, retrieving its termination status.
+\end{enumerate}
+
+In xv6, these steps are executed through the minimal headers \texttt{kernel/types.h} and \texttt{user/user.h}. We implemented \texttt{user/run.c}:
+
+\begin{lstlisting}[style=c]
+#include "kernel/types.h"
+#include "user/user.h"
+
+// the three steps of the shell, inside xv6:  echo hello from the child
+int
+main(int argc, char *argv[])
+{
+  printf("parent: my pid is %d\n", getpid());
+  int pid = fork();                     // step 1: copy myself
+  if(pid < 0){
+    printf("fork failed\n");
+    exit(1);
+  }
+  if(pid == 0){                         // only the child runs this
+    printf("child: my pid is %d\n", getpid());
+    char *args[] = { "echo", "hello", "from", "the", "child", 0 };
+    exec("echo", args);                 // step 2: become echo
+    printf("exec failed\n");            // runs only if exec failed
+    exit(1);
+  }
+  int status;
+  wait(&status);                        // step 3: wait for the child
+  printf("parent: child %d ended with status %d\n", pid, status);
+  exit(0);
+}
+\end{lstlisting}
+
+\subsubsection{Execution and Experiments}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Default Execution with \texttt{echo}:}
+\begin{lstlisting}[style=bash]
+$ run
+parent: my pid is 3
+child: my pid is 4
+hello from the child
+parent: child 4 ended with status 0
+\end{lstlisting}
+    The parent process (PID 3) invokes \texttt{fork()}, allocating a newly initialized \texttt{proc} struct with PID 4. The child prints its PID, transforms into \texttt{echo} via \texttt{exec("echo", args)}, and outputs the argument string. When \texttt{echo} finishes, the parent's \texttt{wait(\&status)} wakes up, reporting exit status 0.
+
+    \item \textbf{Modifying the Child to Execute \texttt{ls}:}
+    We modified the argument array and \texttt{exec} invocation:
+\begin{lstlisting}[style=c]
+    char *args[] = { "ls", 0 };
+    exec("ls", args);                 // step 2: become ls
+\end{lstlisting}
+    Rebuilding and launching \texttt{run} in QEMU produced:
+\begin{lstlisting}[style=bash]
+$ run
+parent: my pid is 3
+child: my pid is 4
+.              1 1 1024
+..             1 1 1024
+README         2 2 2441
+cat            2 3 35864
+echo           2 4 34760
+sleep          2 5 34440
+args           2 6 34424
+mystat         2 7 35616
+find           2 8 42048
+run            2 9 35024
+pingpong       2 10 35800
+primes         2 11 36464
+forktest       2 12 17704
+grep           2 13 43288
+init           2 14 35112
+kill           2 15 34664
+ln             2 16 34456
+ls             2 17 41944
+mkdir          2 18 34712
+rm             2 19 34696
+sh             2 20 57072
+stressfs       2 21 35536
+usertests      2 22 201520
+grind          2 23 50336
+wc             2 24 36832
+zombie         2 25 34008
+logstress      2 26 36680
+forphan        2 27 35472
+dorphan        2 28 34936
+sync           2 29 34112
+console        3 30 0
+parent: child 4 ended with status 0
+\end{lstlisting}
+
+    \item \textbf{Executing a Non-Existent Binary (\texttt{nosuchprog}):}
+    We tested error recovery by replacing the executable target with an invalid name:
+\begin{lstlisting}[style=c]
+    char *args[] = { "nosuchprog", 0 };
+    exec("nosuchprog", args);
+\end{lstlisting}
+    Executing in QEMU:
+\begin{lstlisting}[style=bash]
+$ run
+parent: my pid is 3
+child: my pid is 4
+exec failed
+parent: child 4 ended with status 1
+\end{lstlisting}
+\end{enumerate}
+
+\subsubsection*{Observe:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Write the three calls that run.c uses in xv6 and the three calls run.c used on Linux in Lab 7. What is the same?}\\[0.2em]
+    \textbf{xv6 calls:}
+    \begin{itemize}[noitemsep]
+        \item \texttt{fork()}
+        \item \texttt{exec(path, argv)}
+        \item \texttt{wait(\&status)}
+    \end{itemize}
+    \textbf{Linux calls (Lab 7):}
+    \begin{itemize}[noitemsep]
+        \item \texttt{fork()}
+        \item \texttt{execlp("ls", "ls", "-l", (char *)NULL)}
+        \item \texttt{waitpid(pid, \&status, 0)} (or \texttt{wait(\&status)})
+    \end{itemize}
+    \textbf{What is the same:}\\
+    The high-level process execution model and interface are fundamentally identical. In both operating systems:
+    \begin{itemize}[noitemsep]
+        \item \texttt{fork()} separates creation from execution: it clones the parent's address space, returning 0 in the child and the child's PID in the parent.
+        \item \texttt{exec()} loads an ELF binary from storage, discards the old user memory pages, initializes new page tables, and begins execution at the entry point without altering the PID.
+        \item \texttt{wait()} puts the parent to sleep until a child terminates, recovering the child's exit status and allowing the kernel to reclaim its process table entry.
+    \end{itemize}
+
+    \item \textbf{Who prints "hello from the child": the code of run, or echo?}\\[0.2em]
+    The program \textbf{\texttt{echo}} prints the message. Once \texttt{exec("echo", args)} succeeds, the code, data, and stack segments of \texttt{run.c} in the child process no longer exist in memory. The CPU registers and program counter are pointed to the entry address of the \texttt{echo} binary. The printed string is produced by the \texttt{printf()} call inside \texttt{echo.c}'s \texttt{main()} routine.
+
+    \item \textbf{Why is the status 1 here and 127 on Linux? (Look at the exit line after exec in both programs.)}\\[0.2em]
+    The exit code received by the parent process is determined entirely by the integer parameter passed to \texttt{exit()} by the child when \texttt{exec} fails:
+    \begin{itemize}
+        \item In xv6 (\texttt{user/run.c}):
+\begin{lstlisting}[style=c]
+    printf("exec failed\n");
+    exit(1);
+\end{lstlisting}
+        The child explicitly terminates with argument \texttt{1}. The xv6 kernel stores this value in \texttt{p->xstate}, and \texttt{wait(\&status)} copies \texttt{p->xstate} into the parent's status variable.
+        \item In Linux (\texttt{run.c}):
+\begin{lstlisting}[style=c]
+    perror("exec");
+    exit(127);
+\end{lstlisting}
+        The child explicitly terminates with argument \texttt{127}, following the standard POSIX shell convention where exit code 127 indicates that a specified command or binary was not found.
+    \end{itemize}
+\end{enumerate}
+
+% ==============================================================================
+\subsection{Part 2. pingpong}
+
+\subsubsection{Inter-Process Communication Across Unidirectional Pipes}
+A pipe is an anonymous byte stream provided by the operating system kernel. In xv6, calling \texttt{pipe(p)} allocates a circular buffer in kernel memory and returns two file descriptors:
+\begin{itemize}[noitemsep]
+    \item \texttt{p[0]}: the read descriptor.
+    \item \texttt{p[1]}: the write descriptor.
+\end{itemize}
+
+Because pipes in xv6 are strictly unidirectional, two distinct pipes are necessary to establish bidirectional communication between parent and child without race conditions:
+\begin{enumerate}[noitemsep]
+    \item \texttt{p2c} (Parent-to-Child): parent writes to \texttt{p2c[1]}; child reads from \texttt{p2c[0]}.
+    \item \texttt{c2p} (Child-to-Parent): child writes to \texttt{c2p[1]}; parent reads from \texttt{c2p[0]}.
+\end{enumerate}
+
+\subsubsection{Implementation of user/pingpong.c}
+We implemented \texttt{user/pingpong.c}:
+
+\begin{lstlisting}[style=c]
+#include "kernel/types.h"
+#include "user/user.h"
+
+int
+main(int argc, char *argv[])
+{
+  int p2c[2], c2p[2];     // parent-to-child, child-to-parent
+  char b = 'x';
+
+  if(pipe(p2c) < 0 || pipe(c2p) < 0){
+    fprintf(2, "pipe failed\n");
+    exit(1);
+  }
+
+  int pid = fork();
+  if(pid < 0){
+    fprintf(2, "fork failed\n");
+    exit(1);
+  }
+
+  if(pid == 0){
+    close(p2c[1]); close(c2p[0]);       // the ends the child does not use
+    if(read(p2c[0], &b, 1) != 1){
+      fprintf(2, "child read failed\n");
+      exit(1);
+    }
+    printf("%d: received ping\n", getpid());
+    if(write(c2p[1], &b, 1) != 1){
+      fprintf(2, "child write failed\n");
+      exit(1);
+    }
+    close(p2c[0]);
+    close(c2p[1]);
+    exit(0);
+  }
+
+  close(p2c[0]); close(c2p[1]);         // the ends the parent does not use
+  if(write(p2c[1], &b, 1) != 1){
+    fprintf(2, "parent write failed\n");
+    exit(1);
+  }
+  if(read(c2p[0], &b, 1) != 1){
+    fprintf(2, "parent read failed\n");
+    exit(1);
+  }
+  printf("%d: received pong\n", getpid());
+  close(p2c[1]);
+  close(c2p[0]);
+  wait(0);
+  exit(0);
+}
+\end{lstlisting}
+
+\subsubsection{Execution in xv6}
+We compiled xv6 with \texttt{pingpong} included in \texttt{UPROGS} and tested it in QEMU:
+
+\begin{lstlisting}[style=bash]
+$ pingpong
+6: received ping
+5: received pong
+$
+\end{lstlisting}
+The output order confirms proper synchronization: the child (PID 6) prints \texttt{received ping} first, followed by the parent (PID 5) printing \texttt{received pong}.
+
+\subsubsection*{Observe:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Why do you need TWO pipes, and not one for both directions?}\\[0.2em]
+    A Unix/xv6 pipe is a single unidirectional FIFO queue. If a single pipe \texttt{p[2]} were shared for both directions:
+    \begin{itemize}[noitemsep]
+        \item When the parent writes a byte into \texttt{p[1]} and immediately calls \texttt{read(p[0])}, the parent could read back its own byte before the child process is scheduled.
+        \item If both processes read simultaneously from the same pipe buffer, non-deterministic race conditions occur.
+    \end{itemize}
+    Allocating two separate pipes establishes two disjoint kernel buffers, isolating traffic from parent-to-child (\texttt{p2c}) from traffic in the return direction (\texttt{c2p}).
+
+    \item \textbf{Nothing in your code says "wait until the child has replied". Which call makes the parent wait?}\\[0.2em]
+    The blocking system call \textbf{\texttt{read(c2p[0], \&b, 1)}} forces the parent to wait. In xv6, reading from an empty pipe puts the process into the \texttt{SLEEPING} state on the pipe's internal condition channel (\texttt{piperead()}). The parent cannot proceed until the child writes the byte into \texttt{c2p[1]}, triggering a kernel \texttt{wakeup()} on the channel.
+\end{enumerate}
+
+% ==============================================================================
+\subsection{Optional Extension: primes (Concurrent Prime Sieve)}
+
+\subsubsection{Algorithm and Process Architecture}
+The Prime Sieve pipeline (originally conceived by Doug McIlroy, inventor of Unix pipes) generates prime numbers using concurrent processes arranged as a pipeline:
+\begin{itemize}[noitemsep]
+    \item The root process generates the sequence of integers from 2 to 35 and streams them into a pipe.
+    \item Each filter stage reads the first integer from its input pipe; by mathematical induction, this integer $p$ is guaranteed to be prime.
+    \item The stage prints \texttt{prime p}, creates a new child stage with an outgoing pipe, and filters subsequent integers $n$, forwarding only those where $n \pmod p \neq 0$.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \small
+    \texttt{[Root 2..35] ---> [Stage 2] ---> [Stage 3] ---> [Stage 5] ---> ...}
+    \caption{Process pipeline for the concurrent Sieve of Eratosthenes.}
+\end{figure}
+
+\subsubsection{Implementation Details in xv6}
+In xv6, processes have a strict limit on open file descriptors (\texttt{NOFILE = 16}). Furthermore, recursive child spawning in bare-metal compilers like modern GCC 16 emits infinite-recursion warnings if not carefully managed.
+
+To guarantee zero warnings and deterministic descriptor management, we implemented \texttt{user/primes.c} using an iterative stage handoff loop:
+
+\begin{lstlisting}[style=c]
+#include "kernel/types.h"
+#include "user/user.h"
+
+void
+sieve(int pleft[2])
+{
+  while(1){
+    close(pleft[1]);
+    int prime;
+    if(read(pleft[0], &prime, sizeof(prime)) != sizeof(prime)){
+      close(pleft[0]);
+      exit(0);
+    }
+    printf("prime %d\n", prime);
+
+    int pright[2];
+    if(pipe(pright) < 0){
+      fprintf(2, "pipe failed\n");
+      exit(1);
+    }
+
+    int pid = fork();
+    if(pid < 0){
+      fprintf(2, "fork failed\n");
+      exit(1);
+    }
+    if(pid == 0){
+      close(pleft[0]);
+      pleft[0] = pright[0];
+      pleft[1] = pright[1];
+      continue;
+    } else {
+      close(pright[0]);
+      int n;
+      while(read(pleft[0], &n, sizeof(n)) == sizeof(n)){
+        if(n % prime != 0){
+          write(pright[1], &n, sizeof(n));
+        }
+      }
+      close(pleft[0]);
+      close(pright[1]);
+      wait(0);
+      exit(0);
+    }
+  }
+}
+
+int
+main(int argc, char *argv[])
+{
+  int p[2];
+  if(pipe(p) < 0){
+    fprintf(2, "pipe failed\n");
+    exit(1);
+  }
+
+  int pid = fork();
+  if(pid < 0){
+    fprintf(2, "fork failed\n");
+    exit(1);
+  }
+  if(pid == 0){
+    sieve(p);
+  } else {
+    close(p[0]);
+    for(int i = 2; i <= 35; i++){
+      write(p[1], &i, sizeof(i));
+    }
+    close(p[1]);
+    wait(0);
+  }
+  exit(0);
+}
+\end{lstlisting}
+
+\subsubsection{Verification in QEMU}
+Running \texttt{primes} inside xv6 produced all prime numbers between 2 and 35:
+
+\begin{lstlisting}[style=bash]
+$ primes
+prime 2
+prime 3
+prime 5
+prime 7
+prime 11
+prime 13
+prime 17
+prime 19
+prime 23
+prime 29
+prime 31
+$ 
+\end{lstlisting}
+Every prime was accurately identified, and all stages exited cleanly after encountering EOF on their respective pipe descriptors.
+
+% ==============================================================================
+\section{Conclusion}
+
+In this laboratory work, I evaluated process management and inter-process communication directly inside \textbf{xv6-riscv}, verifying the fundamental principles explored on Linux in Laboratory 7.
+
+Implementing \texttt{user/run.c} demonstrated that the core Unix system calls---\texttt{fork()}, \texttt{exec()}, and \texttt{wait()}---operate under the exact same semantic model in a lightweight educational kernel as they do on a full-scale Linux system. We confirmed that \texttt{fork()} clones the caller's process state, \texttt{exec()} discards the previous memory space to execute the target ELF binary, and \texttt{wait()} synchronizes parent execution with child termination while reaping process state.
+
+Developing \texttt{user/pingpong.c} highlighted the mechanics of pipe-based IPC. Because pipes are strictly unidirectional, two distinct pipes are mandatory to avoid race conditions and self-reads. Furthermore, the blocking nature of \texttt{read()} on empty pipes naturally provides process synchronization without requiring explicit sleep loops or busy-waiting.
+
+Finally, implementing the concurrent prime sieve in \texttt{user/primes.c} demonstrated the power and elegance of Unix pipelines, where complex algorithmic problems decompose into a chain of autonomous filtering processes communicating through kernel FIFOs. This laboratory solidified my understanding of how low-level system call primitives compose to provide robust process isolation and coordination.
+
+\end{document}

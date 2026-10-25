@@ -1,0 +1,21 @@
+\babel@toc {UKenglish}{}\relax 
+\contentsline {section}{\numberline {1}Lab 7: Track A -- Three Small Programs: Processes, Redirection, a Pipe}{2}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Before you start}{2}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Part 1. fork + exec + wait}{2}{subsection.1.2}%
+\contentsline {subsubsection}{\numberline {1.2.1}Program Implementation: run.c}{2}{subsubsection.1.2.1}%
+\contentsline {subsubsection}{\numberline {1.2.2}Compilation and Baseline Execution}{3}{subsubsection.1.2.2}%
+\contentsline {subsubsection}{\numberline {1.2.3}Child Replacement Tests}{3}{subsubsection.1.2.3}%
+\contentsline {subsection}{\numberline {1.3}Part 2. A zombie, on purpose}{4}{subsection.1.3}%
+\contentsline {subsubsection}{\numberline {1.3.1}Constructing a Zombie Process: zombie.c}{4}{subsubsection.1.3.1}%
+\contentsline {subsubsection}{\numberline {1.3.2}Process Table Observation}{5}{subsubsection.1.3.2}%
+\contentsline {subsection}{\numberline {1.4}Part 3. Redirection: ls -l > out.txt}{6}{subsection.1.4}%
+\contentsline {subsubsection}{\numberline {1.4.1}Descriptor Table Manipulation: redirect.c}{6}{subsubsection.1.4.1}%
+\contentsline {subsubsection}{\numberline {1.4.2}Execution and Output Verification}{6}{subsubsection.1.4.2}%
+\contentsline {subsection}{\numberline {1.5}Part 4. A pipe: ls /etc | wc -l}{7}{subsection.1.5}%
+\contentsline {subsubsection}{\numberline {1.5.1}Inter-Process Communication: pipeline.c}{7}{subsubsection.1.5.1}%
+\contentsline {subsubsection}{\numberline {1.5.2}Comparison with Standard Shell Pipeline}{8}{subsubsection.1.5.2}%
+\contentsline {subsubsection}{\numberline {1.5.3}Intentional Bug Experiment: The Hanging Reader}{8}{subsubsection.1.5.3}%
+\contentsline {subsection}{\numberline {1.6}Optional Extension: Three-Stage Pipeline (pipeline3.c)}{9}{subsection.1.6}%
+\contentsline {subsubsection}{\numberline {1.6.1}Implementation: pipeline3.c}{9}{subsubsection.1.6.1}%
+\contentsline {subsubsection}{\numberline {1.6.2}Verification}{10}{subsubsection.1.6.2}%
+\contentsline {section}{\numberline {2}Conclusion}{10}{section.2}%

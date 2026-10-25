@@ -1,0 +1,8 @@
+total 72
+-rw-r--r-- 1 ionut ionut     0 Oct 19 15:40 out.txt
+-rwxr-xr-x 1 ionut ionut 16416 Oct 19 15:40 redirect
+-rw-r--r-- 1 ionut ionut   702 Oct 19 15:40 redirect.c
+-rwxr-xr-x 1 ionut ionut 16472 Oct 19 15:39 run
+-rw-r--r-- 1 ionut ionut   910 Oct 19 15:39 run.c
+-rwxr-xr-x 1 ionut ionut 16528 Oct 19 15:40 zombie
+-rw-r--r-- 1 ionut ionut   967 Oct 19 15:40 zombie.c
