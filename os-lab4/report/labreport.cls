@@ -68,13 +68,16 @@
         \centering
         \large
 
-        \vspace*{0.5cm}
+        \includegraphics[width=3.6cm]{LOGO_UTM.jpg}\par
+        \vspace{0.4cm}
 
-        {\LARGE\bfseries Ministerul Educației și Cercetării al Republicii Moldova\par}
-        \vspace{0.3cm}
+        {\large\bfseries Ministerul Educației și Cercetării al Republicii Moldova\par}
+        \vspace{0.25cm}
         {\LARGE\bfseries Universitatea Tehnică a Moldovei\par}
-        \vspace{0.3cm}
-        {\LARGE\bfseries Facultatea Calculatoare, Informatică și Microelectronică\par}
+        \vspace{0.25cm}
+        {\Large\bfseries Facultatea Calculatoare, Informatică și Microelectronică\par}
+        \vspace{0.25cm}
+        {\large\bfseries Departamentul Ingineria Software și Automatică\par}
 
         \vfill
 

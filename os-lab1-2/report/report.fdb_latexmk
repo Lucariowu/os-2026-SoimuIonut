@@ -1,6 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1791209293.86136 "/home/ionut/Programming/OS/lab1/report/report.tex" "report.pdf" "report" 1791209296.57764 0
-  "/home/ionut/Programming/OS/lab1/report/report.tex" 1791206138.49371 39503 167fe83568ca0ba62fb01d7a57c2c1e8 ""
+["pdflatex"] 1792952975.87062 "report.tex" "report.pdf" "report" 1792952978.02866 0
   "/usr/share/texmf-dist/fonts/enc/dvips/base/8r.enc" 1775415801 4850 80dc9bab7f31fb78a000ccfed0e27cab ""
   "/usr/share/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1775415801 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/usr/share/texmf-dist/fonts/map/fontname/texfonts.map" 1775415801 3524 cb3e574dea2d1052e39280babc910dc8 ""
@@ -125,13 +124,14 @@
   "/usr/share/texmf-dist/tex/latex/url/url.sty" 1775415801 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
   "/usr/share/texmf-dist/tex/latex/xcolor/xcolor.sty" 1775415801 55384 b454dec21c2d9f45ec0b793f0995b992 ""
   "/usr/share/texmf-dist/web2c/texmf.cnf" 1775415801 43569 fd570f2fa160877d211e859f687312ba ""
-  "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1780238007 5385779 47c0c393a77fd4a098bacfd57d66b88a ""
-  "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1780237999 3084559 e65fe4338ef243f81d4946a18116ca25 ""
-  "labreport.cls" 1791209293.51727 2444 f0982b50a4f7de716cc9ca8906fdf17a ""
-  "report.aux" 1791209296.42435 4298 7fffa50a4d1546e343e9e9585b056ae5 "pdflatex"
-  "report.out" 1791209296.42735 6609 05c76a8cd11a96a187c495cd60914400 "pdflatex"
+  "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1792584720 5385779 47c0c393a77fd4a098bacfd57d66b88a ""
+  "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1792584702 3084560 f4532484a39e86956492fe2093487994 ""
+  "LOGO_UTM.jpg" 1792952941.30794 65991 9b08e75b475a353dd285a4fb6da8ada2 ""
+  "labreport.cls" 1792952954.50856 2604 04eaf89f151d3895630b109bc6e1971a ""
+  "report.aux" 1792952977.79869 4298 7fffa50a4d1546e343e9e9585b056ae5 "pdflatex"
+  "report.out" 1792952977.80069 6609 05c76a8cd11a96a187c495cd60914400 "pdflatex"
   "report.tex" 1791206138.49371 39503 167fe83568ca0ba62fb01d7a57c2c1e8 ""
-  "report.toc" 1791209296.42835 2899 3e1f4fbf14a7e7d51bf8f23e563f4706 "pdflatex"
+  "report.toc" 1792952977.80169 2899 3e1f4fbf14a7e7d51bf8f23e563f4706 "pdflatex"
   (generated)
   "report.aux"
   "report.log"

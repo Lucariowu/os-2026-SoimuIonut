@@ -1,6 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1791804319.24851 "/home/ionut/Programming/OS/os-lab3/report/report.tex" "report.pdf" "report" 1791804320.6864 0
-  "/home/ionut/Programming/OS/os-lab3/report/report.tex" 1791804317.95126 29316 8ef17b40b1dde78614b27bbfa1fc2a36 ""
+["pdflatex"] 1792953124.54203 "report.tex" "report.pdf" "report" 1792953126.1532 0
   "/usr/share/texmf-dist/fonts/enc/dvips/base/8r.enc" 1775415801 4850 80dc9bab7f31fb78a000ccfed0e27cab ""
   "/usr/share/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1775415801 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/usr/share/texmf-dist/fonts/map/fontname/texfonts.map" 1775415801 3524 cb3e574dea2d1052e39280babc910dc8 ""
@@ -132,13 +131,14 @@
   "/usr/share/texmf-dist/tex/latex/url/url.sty" 1775415801 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
   "/usr/share/texmf-dist/tex/latex/xcolor/xcolor.sty" 1775415801 55384 b454dec21c2d9f45ec0b793f0995b992 ""
   "/usr/share/texmf-dist/web2c/texmf.cnf" 1775415801 43569 fd570f2fa160877d211e859f687312ba ""
-  "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1780238007 5385779 47c0c393a77fd4a098bacfd57d66b88a ""
-  "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1780237999 3084559 e65fe4338ef243f81d4946a18116ca25 ""
-  "labreport.cls" 1791211382.10004 2444 f0982b50a4f7de716cc9ca8906fdf17a ""
-  "report.aux" 1791804320.46171 3195 25ea3fc8f6f854f482ff5341dad405ea "pdflatex"
-  "report.out" 1791804320.46171 4473 bef2c35de8e1fc99b2d4d64ccad7b7b3 "pdflatex"
+  "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1792584720 5385779 47c0c393a77fd4a098bacfd57d66b88a ""
+  "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1792584702 3084560 f4532484a39e86956492fe2093487994 ""
+  "LOGO_UTM.jpg" 1792953104.38319 65991 9b08e75b475a353dd285a4fb6da8ada2 ""
+  "labreport.cls" 1792953104.38519 2604 04eaf89f151d3895630b109bc6e1971a ""
+  "report.aux" 1792953125.9528 3195 25ea3fc8f6f854f482ff5341dad405ea "pdflatex"
+  "report.out" 1792953125.9538 4473 bef2c35de8e1fc99b2d4d64ccad7b7b3 "pdflatex"
   "report.tex" 1791804317.95126 29316 8ef17b40b1dde78614b27bbfa1fc2a36 ""
-  "report.toc" 1791804320.46271 1992 980a197e6067e8c590c1ef3e8b99ba45 "pdflatex"
+  "report.toc" 1792953125.9548 1992 980a197e6067e8c590c1ef3e8b99ba45 "pdflatex"
   (generated)
   "report.aux"
   "report.log"

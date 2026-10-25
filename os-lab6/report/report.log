@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.5.31)  12 OCT 2026 16:26
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.10.21)  25 OCT 2026 20:32
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -692,6 +692,11 @@ Package microtype Info: No adjustment of character kerning.
  (/usr/share/texmf-dist/tex/latex/microtype/mt-ptm.cfg
 File: mt-ptm.cfg 2006/04/20 v1.7 microtype config. file: Times (RS)
 )
+<LOGO_UTM.jpg, id=60, 1204.5pt x 632.3625pt>
+File: LOGO_UTM.jpg Graphic file (type jpg)
+<use LOGO_UTM.jpg>
+Package pdftex.def Info: LOGO_UTM.jpg  used on input line 94.
+(pdftex.def)             Requested size: 102.43008pt x 53.77422pt.
 LaTeX Font Info:    Trying to load font information for OT1+ztmcm on input line
  94.
 
@@ -726,20 +731,22 @@ File: mt-msa.cfg 2006/02/04 v1.1 microtype config. file: AMS symbols (a) (RS)
 (/usr/share/texmf-dist/tex/latex/microtype/mt-msb.cfg
 File: mt-msb.cfg 2005/06/01 v1.0 microtype config. file: AMS symbols (b) (RS)
 )
-LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <20.74> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 94.
 LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <14.4> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 94.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <12> not available
 (Font)              Font shape `OT1/ptm/b/n' tried instead on input line 94.
 LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <10.95> not available
 (Font)              Font shape `OT1/ptm/b/n' tried instead on input line 94.
 LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <8> not available
 (Font)              Font shape `OT1/ptm/b/n' tried instead on input line 94.
+LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <17.28> not available
+(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 94.
+LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <12> not available
+(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 94.
+LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <10> not available
+(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 94.
  [1
 
 {/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}{/usr/share/texmf-dist/fonts
-/enc/dvips/base/8r.enc}] (./report.toc
+/enc/dvips/base/8r.enc} <./LOGO_UTM.jpg>] (./report.toc
 LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <9> not available
 (Font)              Font shape `OT1/ptm/b/n' tried instead on input line 3.
 LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <7> not available
@@ -799,11 +806,11 @@ Package rerunfilecheck Info: File `report.out' has not changed.
 (rerunfilecheck)             Checksum: 822BAD4A0883C77CC8241988F1969E6F;3150.
  ) 
 Here is how much of TeX's memory you used:
- 19047 strings out of 469515
- 296379 string characters out of 5470807
- 1340883 words of memory out of 5000000
- 46931 multiletter control sequences out of 15000+600000
- 679589 words of font info for 260 fonts, out of 8000000 for 9000
+ 19091 strings out of 469515
+ 297040 string characters out of 5470806
+ 1341050 words of memory out of 5000000
+ 46957 multiletter control sequences out of 15000+600000
+ 685968 words of font info for 279 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
  90i,14n,93p,1003b,2323s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmitt10.pfb></usr/share
@@ -816,10 +823,10 @@ dist/fonts/type1/public/cm-super/sftt1200.pfb></usr/share/texmf-dist/fonts/type
 1/urw/times/utmb8a.pfb></usr/share/texmf-dist/fonts/type1/urw/times/utmr8a.pfb>
 </usr/share/texmf-dist/fonts/type1/urw/times/utmri8a.pfb></usr/share/texmf-dist
 /fonts/type1/urw/zapfding/uzdr.pfb>
-Output written on report.pdf (11 pages, 165646 bytes).
+Output written on report.pdf (11 pages, 231947 bytes).
 PDF statistics:
- 519 PDF objects out of 1000 (max. 8388607)
+ 520 PDF objects out of 1000 (max. 8388607)
  477 compressed objects within 5 object streams
  293 named destinations out of 1000 (max. 500000)
- 82033 words of extra memory for PDF output out of 89155 (max. 10000000)
+ 92790 words of extra memory for PDF output out of 106986 (max. 10000000)
 
