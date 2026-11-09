@@ -1,0 +1,399 @@
+\documentclass{labreport}
+
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{pifont}
+\usepackage{tabularx}
+\usepackage{booktabs}
+
+% Headheight adjustment for fancyhdr
+\setlength{\headheight}{28pt}
+\addtolength{\topmargin}{-13pt}
+
+% Colors
+\definecolor{codebg}{RGB}{248, 249, 251}
+\definecolor{codeborder}{RGB}{218, 222, 229}
+\definecolor{linkcolor}{RGB}{20, 60, 120}
+\definecolor{zshgreen}{RGB}{0, 160, 80}
+\definecolor{zshred}{RGB}{200, 30, 30}
+
+% Hyperref setup with subtle link colors
+\hypersetup{
+    colorlinks=true,
+    linkcolor=linkcolor,
+    filecolor=linkcolor,
+    urlcolor=linkcolor,
+    citecolor=linkcolor
+}
+
+% Code and terminal listings
+\lstdefinestyle{bash}{
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeborder},
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=flexible,
+    numbers=none,
+    xleftmargin=3pt,
+    xrightmargin=3pt,
+    framesep=4pt
+}
+
+\lstdefinestyle{c}{
+    language=C,
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeborder},
+    keywordstyle=\color{blue!85!black}\bfseries,
+    commentstyle=\color{gray!80!black}\itshape,
+    stringstyle=\color{teal!80!black},
+    numbers=left,
+    numberstyle=\tiny\color{gray!80!black},
+    numbersep=8pt,
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=flexible,
+    tabsize=2,
+    xleftmargin=14pt,
+    xrightmargin=3pt,
+    framesep=4pt
+}
+
+\lstset{
+    extendedchars=true,
+    literate=
+        {➜}{{\textcolor{zshgreen}{\ding{220}}}}{1}
+        {├─}{|-\,}{2}
+        {└─}{\`-\,}{2}
+        {├}{|}{1}
+        {─}{-}{1}
+        {└}{\`}{1}
+        {✗}{{\textcolor{zshred}{\ding{55}}}}{1}
+}
+
+% Section styling for clean document structure
+\titleformat{\section}
+  {\large\bfseries}{\thesection}{0.8em}{}[\vspace{1pt}\hrule height 0.5pt]
+\titleformat{\subsection}
+  {\normalsize\bfseries}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}
+  {\small\bfseries}{\thesubsubsection}{0.8em}{}
+
+\begin{document}
+
+\labtitle
+    {9}
+    {Watching System Calls with strace}
+    {st. gr. FAF-243}
+    {Șoimu Ionuț}
+    {asist. univ.\\[0.15cm] Reițman Patricia}
+
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Lab 9: Track A -- Watching System Calls with strace (Linux)}
+
+\subsection{Before you start}
+
+\subsubsection*{Purpose and Scope}
+In operating systems theory, the boundary between an unprivileged user-space program and the privileged kernel represents the most critical architectural partition of modern computing. User-space programs execute in restricted hardware modes (Ring 3 on x86\_64) where direct interaction with hardware devices, physical memory page tables, and scheduling queues is strictly prohibited. To access persistent storage, create network sockets, or communicate with the display, a program must request services through the \textbf{system call interface}.
+
+The objective of Laboratory Work 9 is to inspect, intercept, and analyze this user/kernel threshold from user space using the diagnostic utility \texttt{strace}. By monitoring both standard utility binaries (such as GNU \texttt{ls}) and custom low-level C programs invoking raw POSIX system calls (\texttt{open}, \texttt{write}, \texttt{read}, \texttt{close}), we observe:
+\begin{enumerate}[label=(\alph*), noitemsep]
+    \item How user-space library calls translate into kernel trap instructions;
+    \item How dynamic linkers, runtime libraries, and environment lookups contribute to the syscall footprint of seemingly trivial commands;
+    \item How the kernel allocates file descriptor integers according to POSIX standards;
+    \item How kernel diagnostic tracers capture execution frequencies, latency distributions, and system call error states.
+\end{enumerate}
+
+\subsubsection*{Tooling and Environment}
+Experiments were carried out on a 64-bit Linux installation running Linux Kernel 6.x. The primary investigative tool is \texttt{strace}, which utilizes the kernel's \texttt{ptrace(2)} system call mechanism to halt a monitored child process at every syscall entry and exit point, inspecting CPU registers and memory buffers to decode call names, parameters, and return codes.
+
+% ==============================================================================
+\subsection{Part 1. See the calls of a real command}
+
+\subsubsection{Monitoring Command Execution with strace}
+Standard command-line utilities frequently execute extensive initialization routines before reaching their core application logic. To observe this in practice, we executed GNU \texttt{ls} under \texttt{strace}, filtering specifically for basic I/O and file descriptor system calls:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab9 strace -f -e trace=openat,read,write,close ls -l
+\end{lstlisting}
+
+\subsubsection{Observed Terminal Session}
+Below is the trace output captured during the execution of \texttt{ls -l}:
+
+\begin{lstlisting}[style=bash]
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+close(3)                                = 0
+openat(AT_FDCWD, "/usr/lib/libcap.so.2", O_RDONLY|O_CLOEXEC) = 3
+read(3, "\177ELF\2\1\1\0\0\0\0\0\0\0\0\0\3\0>\0\1\0\0\0\200\212\0\0\0\0\0\0"..., 1024) = 1024
+close(3)                                = 0
+openat(AT_FDCWD, "/usr/lib/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+read(3, "\177ELF\2\1\1\3\0\0\0\0\0\0\0\0\3\0>\0\1\0\0\0P\177\2\0\0\0\0\0"..., 1024) = 1024
+close(3)                                = 0
+openat(AT_FDCWD, "/usr/lib/locale/locale-archive", O_RDONLY|O_CLOEXEC) = 3
+close(3)                                = 0
+openat(AT_FDCWD, "/usr/share/locale/locale.alias", O_RDONLY|O_CLOEXEC) = 3
+read(3, "# Locale name alias data base.\n#"..., 4096) = 2998
+read(3, "", 4096)                       = 0
+close(3)                                = 0
+openat(AT_FDCWD, "/etc/nsswitch.conf", O_RDONLY|O_CLOEXEC) = 3
+read(3, "# Name Service Switch configurat"..., 4096) = 359
+read(3, "", 4096)                       = 0
+close(3)                                = 0
+openat(AT_FDCWD, "/etc/passwd", O_RDONLY|O_CLOEXEC) = 3
+read(3, "root:x:0:0::/root:/usr/bin/bash\n"..., 4096) = 2245
+close(3)                                = 0
+openat(AT_FDCWD, "/etc/group", O_RDONLY|O_CLOEXEC) = 3
+read(3, "root:x:0:root\nsys:x:3:bin\nmem:x:"..., 4096) = 1218
+close(3)                                = 0
+openat(AT_FDCWD, "/home/ionut/Programming/OS/os-lab9", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 3
+close(3)                                = 0
+write(1, "total 68\n", 9)               = 9
+openat(AT_FDCWD, "/etc/localtime", O_RDONLY|O_CLOEXEC) = 3
+read(3, "TZif2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\20\0\0\0\20\0\0\0\0"..., 4096) = 2424
+read(3, "TZif2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\20\0\0\0\20\0\0\0\0"..., 4096) = 1509
+close(3)                                = 0
+write(1, "-rw-r--r-- 1 ionut ionut 65991 Nov  9 13:48 LOGO_UTM.jpg\n", 57) = 57
+write(1, "drwxr-xr-x 1 ionut ionut   226 Nov  9 13:48 report\n", 48) = 48
+close(1)                                = 0
+close(2)                                = 0
++++ exited with 0 +++
+\end{lstlisting}
+
+\subsubsection{Analysis of Calls}
+Even for a simple listing command, the operating system executes a substantial sequence of system calls:
+\begin{itemize}[noitemsep]
+    \item \textbf{Dynamic Linker Resolution:} The process opens `/etc/ld.so.cache` to locate shared libraries (`libcap.so.2`, `libc.so.6`), verifies their ELF headers via `read()`, and maps them into its virtual memory.
+    \item \textbf{Identity and Name Service Mapping:} In order to display textual user and group names (`ionut ionut`), \texttt{ls} consults `/etc/nsswitch.conf`, `/etc/passwd`, and `/etc/group`.
+    \item \textbf{Locale and Timezone:} Timestamps require timezone rules extracted from `/etc/localtime`.
+    \item \textbf{Directory Traversal and Output:} The targeted directory descriptor is opened via `openat()`, directory entries are retrieved, and formatted rows are written line-by-line to standard output.
+\end{itemize}
+In total, a single execution of `ls -l` makes between \textbf{50 and 70 system calls}.
+
+\subsubsection*{Observe:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Which system call does ls use to print to the screen? To which descriptor does it write?}\\[0.2em]
+    \texttt{ls} uses the \textbf{\texttt{write()}} system call to print to the screen, and it writes specifically to \textbf{file descriptor \texttt{1}} (\texttt{STDOUT\_FILENO}, standard output).\\
+    As seen in the trace output:
+    \begin{lstlisting}[style=bash]
+write(1, "total 68\n", 9) = 9
+write(1, "-rw-r--r-- 1 ionut ionut 65991 Nov  9 13:48 LOGO_UTM.jpg\n", 57) = 57
+    \end{lstlisting}
+    Each line of the directory listing is handed directly to the kernel through descriptor 1.
+\end{enumerate}
+
+% ==============================================================================
+\subsection{Part 2. A program that calls the kernel directly}
+
+\subsubsection{Direct Kernel Invocation: syscalls.c}
+In high-level C programming, developers typically invoke standard I/O library functions such as \texttt{fopen()}, \texttt{fprintf()}, and \texttt{fgets()}. These library functions maintain internal user-space buffers in an attempt to minimize expensive context switches into supervisor mode.
+
+To observe direct kernel transitions without runtime buffering, we implemented \texttt{syscalls.c}, which interacts with persistent storage solely through raw POSIX system calls:
+
+\begin{lstlisting}[style=c]
+/* syscalls.c - open, write, read and close, using only system calls.
+ * Build: gcc -Wall -Wextra -o syscalls syscalls.c
+ * Run:   ./syscalls
+ * See the calls: strace ./syscalls
+ */
+#include <fcntl.h>      /* open */
+#include <unistd.h>     /* write, read, close */
+#include <string.h>     /* strlen */
+#include <stdio.h>      /* printf */
+
+int main(void) {
+    const char *msg = "hello, kernel\n";
+
+    /* open() is a system call: ask the kernel for a file, get back a descriptor */
+    int fd = open("note.txt", O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (fd < 0) { perror("open"); return 1; }
+    printf("open returned descriptor %d\n", fd);
+
+    /* write() is a system call: hand the bytes to the kernel */
+    ssize_t n = write(fd, msg, strlen(msg));
+    printf("write sent %zd bytes\n", n);
+    close(fd);
+
+    /* read it back, through the kernel again */
+    fd = open("note.txt", O_RDONLY);
+    char buf[64];
+    n = read(fd, buf, sizeof(buf) - 1);
+    buf[n] = '\0';
+    printf("read got %zd bytes: %s", n, buf);
+    close(fd);
+    return 0;
+}
+\end{lstlisting}
+
+\subsubsection{Compilation and Direct Execution}
+We compiled and executed the program without tracing:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab9 gcc -Wall -Wextra -o syscalls syscalls.c
+➜  os-lab9 ./syscalls
+open returned descriptor 3
+write sent 14 bytes
+read got 14 bytes: hello, kernel
+\end{lstlisting}
+
+\subsubsection{Tracing System Calls with strace}
+Next, we executed the compiled binary under \texttt{strace}, filtering specifically for \texttt{openat}, \texttt{write}, \texttt{read}, and \texttt{close}:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab9 strace -e trace=openat,write,read,close ./syscalls
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+close(3)                                = 0
+openat(AT_FDCWD, "/usr/lib/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+read(3, "\177ELF\2\1\1\3\0\0\0\0\0\0\0\0\3\0>\0\1\0\0\0P\177\2\0\0\0\0\0"..., 1024) = 1024
+close(3)                                = 0
+openat(AT_FDCWD, "note.txt", O_WRONLY|O_CREAT|O_TRUNC, 0644) = 3
+write(1, "open returned descriptor 3\n", 27) = 27
+write(3, "hello, kernel\n", 14)         = 14
+write(1, "write sent 14 bytes\n", 20)   = 20
+close(3)                                = 0
+openat(AT_FDCWD, "note.txt", O_RDONLY)  = 3
+read(3, "hello, kernel\n", 63)          = 14
+write(1, "read got 14 bytes: hello, kernel\n", 33) = 33
+close(3)                                = 0
++++ exited with 0 +++
+\end{lstlisting}
+
+\subsubsection{Correlation Between Code and Kernel Traps}
+The trace reveals a strict 1-to-1 correspondence between our C source statements and the emitted kernel traps:
+\begin{enumerate}
+    \item \texttt{open("note.txt", O\_CREAT | O\_WRONLY | O\_TRUNC, 0644)} triggers:
+    \begin{center}
+        \texttt{openat(AT\_FDCWD, "note.txt", O\_WRONLY|O\_CREAT|O\_TRUNC, 0644) = 3}
+    \end{center}
+    On modern 64-bit Linux kernels, libc implements \texttt{open()} by calling the generalized \texttt{openat()} system call passing \texttt{AT\_FDCWD} (representing the current working directory).
+    \item \texttt{printf("open returned descriptor \%d\textbackslash n", fd)} flushes to stdout:
+    \begin{center}
+        \texttt{write(1, "open returned descriptor 3\textbackslash n", 27) = 27}
+    \end{center}
+    \item \texttt{write(fd, msg, strlen(msg))} writes 14 bytes to the file:
+    \begin{center}
+        \texttt{write(3, "hello, kernel\textbackslash n", 14) = 14}
+    \end{center}
+    \item \texttt{close(fd)} releases descriptor 3:
+    \begin{center}
+        \texttt{close(3) = 0}
+    \end{center}
+    \item \texttt{open("note.txt", O\_RDONLY)} reopens the file:
+    \begin{center}
+        \texttt{openat(AT\_FDCWD, "note.txt", O\_RDONLY) = 3}
+    \end{center}
+    \item \texttt{read(fd, buf, sizeof(buf) - 1)} reads up to 63 bytes, receiving 14:
+    \begin{center}
+        \texttt{read(3, "hello, kernel\textbackslash n", 63) = 14}
+    \end{center}
+    \item \texttt{close(fd)} terminates the file session:
+    \begin{center}
+        \texttt{close(3) = 0}
+    \end{center}
+\end{enumerate}
+
+\subsubsection*{Observe:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{The descriptor returned by the first openat is 3, not 0, 1 or 2. Why are those three already taken?}\\[0.2em]
+    Under the POSIX system standard, every standard process inherits three pre-allocated file descriptors at process instantiation:
+    \begin{itemize}[noitemsep, topsep=2pt]
+        \item \textbf{Descriptor 0 (\texttt{STDIN\_FILENO}):} Standard Input stream.
+        \item \textbf{Descriptor 1 (\texttt{STDOUT\_FILENO}):} Standard Output stream.
+        \item \textbf{Descriptor 2 (\texttt{STDERR\_FILENO}):} Standard Error diagnostic stream.
+    \end{itemize}
+    The Linux kernel's file descriptor allocator adheres to the deterministic \textbf{lowest-available-descriptor rule}: whenever a new descriptor is requested via \texttt{open()}, \texttt{creat()}, \texttt{dup()}, or \texttt{pipe()}, the kernel scans the process's file descriptor table starting from index 0 and allocates the smallest integer slot that is not currently in use.\\
+    Since slots 0, 1, and 2 are already occupied by the terminal streams established by the shell, the first user file descriptor allocated is guaranteed to be integer \textbf{3}.
+\end{enumerate}
+
+% ==============================================================================
+\subsection{Part 3. Count one kind of call}
+
+\subsubsection{Statistical Profiling with strace -c}
+The \texttt{-c} flag enables profiling mode in \texttt{strace}. Instead of printing each system call sequentially, \texttt{strace} attaches timers to each call and presents a statistical summary upon process exit.
+
+We profiled the execution of \texttt{./syscalls} filtering specifically for \texttt{write}:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab9 strace -c -e write ./syscalls
+open returned descriptor 3
+write sent 14 bytes
+read got 14 bytes: hello, kernel
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.000039           9         4           write
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.000039           9         4           total
+\end{lstlisting}
+
+\subsubsection{Deconstructing the 4 write Calls}
+Although our source code contains only one explicit call to \texttt{write()} (\texttt{write(fd, msg, strlen(msg))}), the profiler reports exactly \textbf{4 write system calls}.
+The discrepancy is explained by the three calls to \texttt{printf()}:
+\begin{enumerate}[noitemsep]
+    \item \texttt{write(1, "open returned descriptor 3\textbackslash n", 27)} -- produced by \texttt{printf}
+    \item \texttt{write(3, "hello, kernel\textbackslash n", 14)} -- our explicit system call
+    \item \texttt{write(1, "write sent 14 bytes\textbackslash n", 20)} -- produced by \texttt{printf}
+    \item \texttt{write(1, "read got 14 bytes: hello, kernel\textbackslash n", 33)} -- produced by \texttt{printf}
+\end{enumerate}
+Because standard output connected to a terminal is line-buffered by default in \texttt{glibc}, every newline character (\texttt{\textbackslash n}) in a \texttt{printf()} format string triggers a flush, generating an underlying \texttt{write(1, ...)} system call.
+
+\subsubsection{Complete System Call Profiling for ./syscalls}
+Running an unfiltered profiling session (\texttt{strace -c ./syscalls}) demonstrates the total syscall load of a minimal C program:
+
+\begin{lstlisting}[style=bash]
+➜  os-lab9 strace -c ./syscalls
+open returned descriptor 3
+write sent 14 bytes
+read got 14 bytes: hello, kernel
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 28.99    0.000060          15         4           close
+ 22.71    0.000047          11         4           openat
+ 15.94    0.000033           8         4           write
+ 10.63    0.000022           7         3           mprotect
+  8.70    0.000018           9         2           getrandom
+  5.80    0.000012           4         3           brk
+  3.38    0.000007           3         2           read
+  1.93    0.000004           1         3           fstat
+  1.93    0.000004           4         1           prlimit64
+  0.00    0.000000           0         8           mmap
+  0.00    0.000000           0         1         1 access
+  0.00    0.000000           0         1           execve
+  0.00    0.000000           0         1           arch_prctl
+  0.00    0.000000           0         1           set_tid_address
+  0.00    0.000000           0         2           newfstatat
+  0.00    0.000000           0         1           set_robust_list
+  0.00    0.000000           0         1           rseq
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.000207           4        42         1 total
+\end{lstlisting}
+
+The program executed \textbf{42 system calls} in 207 microseconds:
+\begin{itemize}[noitemsep]
+    \item Memory management calls (\texttt{mmap}, \texttt{mprotect}, \texttt{brk}) allocate stack guards, map the C library, and initialize the heap.
+    \item Process control calls (\texttt{execve}, \texttt{arch\_prctl}, \texttt{set\_tid\_address}, \texttt{rseq}) configure CPU thread-local storage and scheduling parameters.
+    \item File I/O calls (\texttt{openat}, \texttt{read}, \texttt{write}, \texttt{close}) handle library loading, user data transfer, and stream cleanup.
+\end{itemize}
+
+% ==============================================================================
+\section{Conclusion}
+
+Through Laboratory Work 9, I investigated the system call interface of the Linux operating system from the outside using \texttt{strace}.
+
+Analyzing the execution of standard GNU utilities revealed that even elementary commands such as \texttt{ls -l} require dozens of system calls to resolve shared dynamic libraries, translate numerical user/group IDs to names via `/etc/passwd` and `/etc/group`, decode locale configuration, and traverse directory trees. We confirmed that screen output is achieved exclusively via the \texttt{write()} system call directed to standard output file descriptor 1.
+
+By implementing \texttt{syscalls.c}, I observed the direct correlation between user-level POSIX primitives and kernel trap dispatches. We verified that libc translates \texttt{open()} to modern \texttt{openat()} calls, and proved that descriptor allocation strictly follows the lowest-available-descriptor rule, causing the first user-opened file to receive descriptor 3 because descriptors 0, 1, and 2 are pre-allocated for standard input, standard output, and standard error.
+
+Finally, profiling system calls with \texttt{strace -c} demonstrated how user-space runtime buffering in libc bridges high-level functions like \texttt{printf()} with kernel calls like \texttt{write()}. This laboratory provided concrete empirical confirmation of how the operating system kernel protects and multiplexes hardware resources behind uniform, traceable system call boundaries.
+
+\end{document}

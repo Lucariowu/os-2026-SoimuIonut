@@ -1,0 +1,17 @@
+\babel@toc {UKenglish}{}\relax 
+\contentsline {section}{\numberline {1}Lab 9: Track A -- Watching System Calls with strace (Linux)}{2}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Before you start}{2}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Part 1. See the calls of a real command}{2}{subsection.1.2}%
+\contentsline {subsubsection}{\numberline {1.2.1}Monitoring Command Execution with strace}{2}{subsubsection.1.2.1}%
+\contentsline {subsubsection}{\numberline {1.2.2}Observed Terminal Session}{2}{subsubsection.1.2.2}%
+\contentsline {subsubsection}{\numberline {1.2.3}Analysis of Calls}{3}{subsubsection.1.2.3}%
+\contentsline {subsection}{\numberline {1.3}Part 2. A program that calls the kernel directly}{4}{subsection.1.3}%
+\contentsline {subsubsection}{\numberline {1.3.1}Direct Kernel Invocation: syscalls.c}{4}{subsubsection.1.3.1}%
+\contentsline {subsubsection}{\numberline {1.3.2}Compilation and Direct Execution}{4}{subsubsection.1.3.2}%
+\contentsline {subsubsection}{\numberline {1.3.3}Tracing System Calls with strace}{5}{subsubsection.1.3.3}%
+\contentsline {subsubsection}{\numberline {1.3.4}Correlation Between Code and Kernel Traps}{5}{subsubsection.1.3.4}%
+\contentsline {subsection}{\numberline {1.4}Part 3. Count one kind of call}{6}{subsection.1.4}%
+\contentsline {subsubsection}{\numberline {1.4.1}Statistical Profiling with strace -c}{6}{subsubsection.1.4.1}%
+\contentsline {subsubsection}{\numberline {1.4.2}Deconstructing the 4 write Calls}{7}{subsubsection.1.4.2}%
+\contentsline {subsubsection}{\numberline {1.4.3}Complete System Call Profiling for ./syscalls}{7}{subsubsection.1.4.3}%
+\contentsline {section}{\numberline {2}Conclusion}{8}{section.2}%
