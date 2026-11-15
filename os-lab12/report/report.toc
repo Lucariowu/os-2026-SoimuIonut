@@ -1,0 +1,16 @@
+\babel@toc {UKenglish}{}\relax 
+\contentsline {section}{\numberline {1}Lab 12: Track A -- Producer, Consumer and the Other Tools (Linux)}{2}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Before you start}{2}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Part 1. Producer and consumer}{2}{subsection.1.2}%
+\contentsline {subsubsection}{\numberline {1.2.1}Bounded Buffer Architecture: prodcons.c}{2}{subsubsection.1.2.1}%
+\contentsline {subsubsection}{\numberline {1.2.2}Observed Terminal Session}{3}{subsubsection.1.2.2}%
+\contentsline {subsection}{\numberline {1.3}Part 2. The condition variable}{4}{subsection.1.3}%
+\contentsline {subsubsection}{\numberline {1.3.1}Explicit State Signaling: condvar.c}{4}{subsubsection.1.3.1}%
+\contentsline {subsubsection}{\numberline {1.3.2}Observed Terminal Session}{5}{subsubsection.1.3.2}%
+\contentsline {subsection}{\numberline {1.4}Part 3. Readers and writers}{6}{subsection.1.4}%
+\contentsline {subsubsection}{\numberline {1.4.1}Asymmetric Concurrency: readers.c}{6}{subsubsection.1.4.1}%
+\contentsline {subsubsection}{\numberline {1.4.2}Observed Terminal Session}{7}{subsubsection.1.4.2}%
+\contentsline {subsection}{\numberline {1.5}Part 4. Build a deadlock, then remove it}{8}{subsection.1.5}%
+\contentsline {subsubsection}{\numberline {1.5.1}Constructing Circular Wait: deadlock\_buggy.c}{8}{subsubsection.1.5.1}%
+\contentsline {subsubsection}{\numberline {1.5.2}Resolution via Lock Hierarchy: deadlock.c}{8}{subsubsection.1.5.2}%
+\contentsline {section}{\numberline {2}Conclusion}{10}{section.2}%
