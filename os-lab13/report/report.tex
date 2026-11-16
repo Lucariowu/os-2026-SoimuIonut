@@ -351,7 +351,20 @@ sys_sem_up(void)
 \subsubsection{Build System and Dispatch Table Registration}
 \begin{enumerate}[label=(\alph*), noitemsep]
     \item In \texttt{Makefile}, \texttt{\$K/sem.o \textbackslash} was added to the \texttt{OBJS} kernel object list;
-    \item In \texttt{kernel/syscall.c}, \texttt{sys\_sem\_init}, \texttt{sys\_sem\_down}, and \texttt{sys\_sem\_up} were registered in the \texttt{syscalls[]} array and mapped in the string translation table \texttt{syscallnames[]}.
+    \item In \texttt{kernel/syscall.c}, \texttt{sys\_sem\_init}, \texttt{sys\_sem\_down}, and \texttt{sys\_sem\_up} were registered:
+\begin{lstlisting}[style=c]
+extern uint64 sys_sem_init(void);
+extern uint64 sys_sem_down(void);
+extern uint64 sys_sem_up(void);
+...
+static uint64 (*syscalls[])(void) = {
+...
+  [SYS_sync]     = sys_sync,
+  [SYS_sem_init] = sys_sem_init,
+  [SYS_sem_down] = sys_sem_down,
+  [SYS_sem_up]   = sys_sem_up,
+};
+\end{lstlisting}
 \end{enumerate}
 
 \subsubsection{Check 2: Verification of Kernel Semaphores}

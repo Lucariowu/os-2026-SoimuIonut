@@ -12,9 +12,10 @@ int
 fetchaddr(uint64 addr, uint64 *ip)
 {
   struct proc *p = myproc();
-  if (addr >= p->sz || addr + sizeof(uint64) > p->sz) // both tests needed, in case of overflow
+  if (addr >= p->sz ||
+      addr + sizeof(uint64) > p->sz) // both tests needed, in case of overflow
     return -1;
-  if (copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)
+  if (copyin(p->pagetable, p->sz, (char *)ip, addr, sizeof(*ip)) != 0)
     return -1;
   return 0;
 }
@@ -25,7 +26,7 @@ int
 fetchstr(uint64 addr, char *buf, int max)
 {
   struct proc *p = myproc();
-  if (copyinstr(p->pagetable, buf, addr, max) < 0)
+  if (copyinstr(p->pagetable, p->sz, buf, addr, max) < 0)
     return -1;
   return strlen(buf);
 }
@@ -70,7 +71,7 @@ argaddr(int n, uint64 *ip)
 
 // Fetch the nth word-sized system call argument as a null-terminated string.
 // Copies into buf, at most max.
-// Returns string length if OK (including nul), -1 if error.
+// Returns string length if OK (not including nul), -1 if error.
 int
 argstr(int n, char *buf, int max)
 {
