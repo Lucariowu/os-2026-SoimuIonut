@@ -1,0 +1,590 @@
+\documentclass{labreport}
+
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{pifont}
+\usepackage{tabularx}
+\usepackage{booktabs}
+
+% Headheight adjustment for fancyhdr
+\setlength{\headheight}{28pt}
+\addtolength{\topmargin}{-13pt}
+
+% Colors
+\definecolor{codebg}{RGB}{248, 249, 251}
+\definecolor{codeborder}{RGB}{218, 222, 229}
+\definecolor{linkcolor}{RGB}{20, 60, 120}
+\definecolor{zshgreen}{RGB}{0, 160, 80}
+\definecolor{zshred}{RGB}{200, 30, 30}
+
+% Hyperref setup with subtle link colors
+\hypersetup{
+    colorlinks=true,
+    linkcolor=linkcolor,
+    filecolor=linkcolor,
+    urlcolor=linkcolor,
+    citecolor=linkcolor
+}
+
+% Code and terminal listings
+\lstdefinestyle{bash}{
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeborder},
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=flexible,
+    numbers=none,
+    xleftmargin=3pt,
+    xrightmargin=3pt,
+    framesep=4pt
+}
+
+\lstdefinestyle{c}{
+    language=C,
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeborder},
+    keywordstyle=\color{blue!85!black}\bfseries,
+    commentstyle=\color{gray!80!black}\itshape,
+    stringstyle=\color{teal!80!black},
+    numbers=left,
+    numberstyle=\tiny\color{gray!80!black},
+    numbersep=8pt,
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=flexible,
+    tabsize=2,
+    xleftmargin=14pt,
+    xrightmargin=3pt,
+    framesep=4pt
+}
+
+\lstdefinestyle{asm}{
+    language=[x86masm]Assembler,
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeborder},
+    keywordstyle=\color{purple!85!black}\bfseries,
+    commentstyle=\color{gray!80!black}\itshape,
+    stringstyle=\color{teal!80!black},
+    numbers=left,
+    numberstyle=\tiny\color{gray!80!black},
+    numbersep=8pt,
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=flexible,
+    xleftmargin=14pt,
+    xrightmargin=3pt,
+    framesep=4pt
+}
+
+\lstset{
+    extendedchars=true,
+    literate=
+        {➜}{{\textcolor{zshgreen}{\ding{220}}}}{1}
+        {├─}{|-\,}{2}
+        {└─}{\`-\,}{2}
+        {├}{|}{1}
+        {─}{-}{1}
+        {└}{\`}{1}
+        {✗}{{\textcolor{zshred}{\ding{55}}}}{1}
+}
+
+% Section styling for clean document structure
+\titleformat{\section}
+  {\large\bfseries}{\thesection}{0.8em}{}[\vspace{1pt}\hrule height 0.5pt]
+\titleformat{\subsection}
+  {\normalsize\bfseries}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}
+  {\small\bfseries}{\thesubsubsection}{0.8em}{}
+
+\begin{document}
+
+\labtitle
+    {18}
+    {A User-Level Thread Switch}
+    {st. gr. FAF-243}
+    {Șoimu Ionuț}
+    {asist. univ.\\[0.15cm] Reițman Patricia}
+
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Lab 18: Track B -- A User-Level Thread Switch (xv6)}
+
+\subsection{Before you start}
+
+\subsubsection*{Purpose and Scope}
+In operating systems architecture, thread management can occur at two distinct abstraction layers:
+\begin{enumerate}[label=(\alph*), noitemsep]
+    \item \textbf{Kernel-Level Threads (1:1 Model):} The kernel scheduler creates, tracks, and switches execution contexts between threads using hardware timer interrupts and supervisor-mode state frames (\texttt{struct trapframe}).
+    \item \textbf{User-Level Threads (M:1 Model / Green Threads / Coroutines):} Thread scheduling, context persistence, and execution switching occur entirely within user space code, without issuing system calls or transitioning CPU privilege rings into supervisor mode.
+\end{enumerate}
+
+The objective of Laboratory Work 18 is to design and implement a compact, high-performance \textbf{user-level cooperative threading package} (\texttt{uthread}) in the \textbf{xv6-riscv} operating system. Specifically:
+\begin{enumerate}[label=(\alph*), noitemsep]
+    \item Allocate dedicated thread control structures and private execution call stacks for independent threads;
+    \item Define the execution \texttt{context} reflecting the RISC-V calling convention;
+    \item Implement thread initialization and bootstrapping in \texttt{thread\_create()};
+    \item Implement cooperative scheduling and context handoff in \texttt{thread\_schedule()} and \texttt{thread\_yield()};
+    \item Author the machine-level register preservation routine in assembly (\texttt{user/uthread\_switch.S});
+    \item Integrate the build targets into the xv6 build system without modifying kernel-space code;
+    \item Boot xv6 under QEMU and empirically verify three concurrent threads alternating execution until completion.
+\end{enumerate}
+
+% ==============================================================================
+\subsection{Part 1. The switch}
+
+\subsubsection{1.1 Thread Control Block and Context: user/uthread.c}
+A thread requires two core resources to run: its own stack and saved CPU state when not currently executing. 
+
+\paragraph{Callee-Saved Registers and Context Definition:}
+Under the standard RISC-V calling convention (RV64 ABI), registers are partitioned into caller-saved and callee-saved:
+\begin{itemize}[noitemsep]
+    \item \textbf{Caller-saved registers} (\texttt{ra}, \texttt{t0}--\texttt{t6}, \texttt{a0}--\texttt{a7}): If a function expects these values to persist across a call, the compiler generates instructions to push them onto the calling thread's own stack prior to invoking \texttt{thread\_switch()}.
+    \item \textbf{Callee-saved registers} (\texttt{ra}, \texttt{sp}, \texttt{s0}--\texttt{s11}): The called function (\texttt{thread\_switch}) is obligated to preserve these across execution.
+\end{itemize}
+
+Therefore, our \texttt{struct context} requires exactly $14$ 64-bit integer fields:
+
+\begin{lstlisting}[style=c]
+/* the registers a thread must keep across a switch (callee-saved) */
+struct context {
+  uint64 ra;
+  uint64 sp;
+
+  // callee-saved registers
+  uint64 s0;
+  uint64 s1;
+  uint64 s2;
+  uint64 s3;
+  uint64 s4;
+  uint64 s5;
+  uint64 s6;
+  uint64 s7;
+  uint64 s8;
+  uint64 s9;
+  uint64 s10;
+  uint64 s11;
+};
+\end{lstlisting}
+
+\paragraph{Thread Representation:}
+Each thread is encapsulated in a \texttt{struct thread}:
+\begin{lstlisting}[style=c]
+struct thread {
+  struct context ctx;                                             /* saved registers */
+  char           stack[STACK_SIZE] __attribute__((aligned(16)));  /* private stack */
+  int            state;                                           /* FREE, RUNNING, RUNNABLE */
+};
+\end{lstlisting}
+The stack must be strictly aligned to a 16-byte boundary as mandated by the RISC-V standard stack frame alignment rules.
+
+\paragraph{Thread Creation: thread\_create()}
+When a new thread is spawned, an unused entry in \texttt{all\_thread} is located and transitioned to the \texttt{RUNNABLE} state. To prepare the thread for its first execution switch, two crucial context fields must be initialized:
+\begin{enumerate}[noitemsep]
+    \item \texttt{ctx.ra}: Initialized to the memory address of the target function (\texttt{func}). When \texttt{thread\_switch} executes \texttt{ret}, the program counter will jump directly to \texttt{func}.
+    \item \texttt{ctx.sp}: Initialized to the top of the thread's stack (\texttt{t->stack + STACK\_SIZE}). Because stacks on RISC-V grow downwards toward lower addresses, the initial stack pointer must reside at the highest valid address of the allocated buffer.
+\end{enumerate}
+
+\begin{lstlisting}[style=c]
+void
+thread_create(void (*func)())
+{
+  struct thread *t;
+
+  for (t = all_thread; t < all_thread + MAX_THREAD; t++) {
+    if (t->state == FREE) break;
+  }
+  t->state = RUNNABLE;
+  t->ctx.ra = (uint64)func;
+  t->ctx.sp = (uint64)(t->stack + STACK_SIZE);
+}
+\end{lstlisting}
+
+\paragraph{Cooperative Scheduling: thread\_schedule() and thread\_yield()}
+A round-robin scheduler inspects the thread table to locate the next \texttt{RUNNABLE} thread. When switching from \texttt{current\_thread} to \texttt{next\_thread}:
+\begin{lstlisting}[style=c]
+  if (current_thread != next_thread) {
+    /* switch threads */
+    next_thread->state = RUNNING;
+    struct thread *old = current_thread;
+    current_thread = next_thread;
+    thread_switch(&old->ctx, &next_thread->ctx);
+  }
+\end{lstlisting}
+
+Voluntary CPU relinquishment occurs when a thread invokes \texttt{thread\_yield()}, setting its state to \texttt{RUNNABLE} and entering the scheduler.
+
+\paragraph{Complete Implementation of user/uthread.c:}
+\begin{lstlisting}[style=c]
+#include "kernel/types.h"
+#include "user/user.h"
+
+/* Possible states of a thread: */
+#define FREE        0x0
+#define RUNNING     0x1
+#define RUNNABLE    0x2
+
+#define STACK_SIZE  8192
+#define MAX_THREAD  4
+
+struct context {
+  uint64 ra;
+  uint64 sp;
+  uint64 s0;
+  uint64 s1;
+  uint64 s2;
+  uint64 s3;
+  uint64 s4;
+  uint64 s5;
+  uint64 s6;
+  uint64 s7;
+  uint64 s8;
+  uint64 s9;
+  uint64 s10;
+  uint64 s11;
+};
+
+struct thread {
+  struct context ctx;
+  char           stack[STACK_SIZE] __attribute__((aligned(16)));
+  int            state;
+};
+
+struct thread all_thread[MAX_THREAD];
+struct thread *current_thread;
+extern void thread_switch(struct context *old, struct context *new);
+
+void
+thread_init(void)
+{
+  current_thread = &all_thread[0];
+  current_thread->state = RUNNING;
+}
+
+void
+thread_schedule(void)
+{
+  struct thread *t, *next_thread;
+
+  next_thread = 0;
+  t = current_thread + 1;
+  for(int i = 0; i < MAX_THREAD; i++){
+    if(t >= all_thread + MAX_THREAD)
+      t = all_thread;
+    if(t->state == RUNNABLE) {
+      next_thread = t;
+      break;
+    }
+    t = t + 1;
+  }
+
+  if (next_thread == 0) {
+    printf("thread_schedule: no runnable threads\n");
+    exit(-1);
+  }
+
+  if (current_thread != next_thread) {
+    next_thread->state = RUNNING;
+    struct thread *old = current_thread;
+    current_thread = next_thread;
+    thread_switch(&old->ctx, &next_thread->ctx);
+  }
+}
+
+void
+thread_create(void (*func)())
+{
+  struct thread *t;
+
+  for (t = all_thread; t < all_thread + MAX_THREAD; t++) {
+    if (t->state == FREE) break;
+  }
+  t->state = RUNNABLE;
+  t->ctx.ra = (uint64)func;
+  t->ctx.sp = (uint64)(t->stack + STACK_SIZE);
+}
+
+void
+thread_yield(void)
+{
+  current_thread->state = RUNNABLE;
+  thread_schedule();
+}
+
+volatile int a_started, b_started, c_started;
+volatile int a_n, b_n, c_n;
+
+void
+thread_a(void)
+{
+  int i;
+  printf("thread_a started\n");
+  a_started = 1;
+  while(b_started == 0 || c_started == 0)
+    thread_yield();
+  for (i = 0; i < 100; i++) {
+    printf("thread_a %d\n", i);
+    a_n += 1;
+    thread_yield();
+  }
+  printf("thread_a: exit after %d\n", a_n);
+  current_thread->state = FREE;
+  thread_schedule();
+}
+
+void
+thread_b(void)
+{
+  int i;
+  printf("thread_b started\n");
+  b_started = 1;
+  while(a_started == 0 || c_started == 0)
+    thread_yield();
+  for (i = 0; i < 100; i++) {
+    printf("thread_b %d\n", i);
+    b_n += 1;
+    thread_yield();
+  }
+  printf("thread_b: exit after %d\n", b_n);
+  current_thread->state = FREE;
+  thread_schedule();
+}
+
+void
+thread_c(void)
+{
+  int i;
+  printf("thread_c started\n");
+  c_started = 1;
+  while(a_started == 0 || b_started == 0)
+    thread_yield();
+  for (i = 0; i < 100; i++) {
+    printf("thread_c %d\n", i);
+    c_n += 1;
+    thread_yield();
+  }
+  printf("thread_c: exit after %d\n", c_n);
+  current_thread->state = FREE;
+  thread_schedule();
+}
+
+int
+main(int argc, char *argv[])
+{
+  a_started = b_started = c_started = 0;
+  a_n = b_n = c_n = 0;
+  thread_init();
+  thread_create(thread_a);
+  thread_create(thread_b);
+  thread_create(thread_c);
+  current_thread->state = FREE;
+  thread_schedule();
+  exit(0);
+}
+\end{lstlisting}
+
+% ------------------------------------------------------------------------------
+\subsubsection{1.2 Low-Level Context Switch: user/uthread\_switch.S}
+The context switch operation cannot be expressed in standard C because saving and restoring arbitrary general-purpose registers would corrupt the compiler's own frame. We author \texttt{thread\_switch} directly in assembly.
+
+The function takes two pointer arguments passed in registers \texttt{a0} and \texttt{a1}:
+\begin{itemize}[noitemsep]
+    \item \texttt{a0}: \texttt{struct context *old} (pointer to the outgoing thread's context structure);
+    \item \texttt{a1}: \texttt{struct context *new} (pointer to the incoming thread's context structure).
+\end{itemize}
+
+It executes two symmetric phases:
+\begin{enumerate}[noitemsep]
+    \item \textbf{Save Phase (\texttt{sd}):} Writes all 14 callee-saved registers to offsets \texttt{0(a0)} through \texttt{104(a0)}.
+    \item \textbf{Restore Phase (\texttt{ld}):} Reads the 14 callee-saved registers from offsets \texttt{0(a1)} through \texttt{104(a1)}.
+    \item \textbf{Return (\texttt{ret}):} Executes \texttt{jalr zero, 0(ra)}, jumping into the address loaded into \texttt{ra}.
+\end{enumerate}
+
+\begin{lstlisting}[style=asm]
+	.text
+
+	/*
+	 * save the old thread's registers,
+	 * restore the new thread's registers.
+	 */
+
+	.globl thread_switch
+thread_switch:
+	sd ra, 0(a0)
+	sd sp, 8(a0)
+	sd s0, 16(a0)
+	sd s1, 24(a0)
+	sd s2, 32(a0)
+	sd s3, 40(a0)
+	sd s4, 48(a0)
+	sd s5, 56(a0)
+	sd s6, 64(a0)
+	sd s7, 72(a0)
+	sd s8, 80(a0)
+	sd s9, 88(a0)
+	sd s10, 96(a0)
+	sd s11, 104(a0)
+
+	ld ra, 0(a1)
+	ld sp, 8(a1)
+	ld s0, 16(a1)
+	ld s1, 24(a1)
+	ld s2, 32(a1)
+	ld s3, 40(a1)
+	ld s4, 48(a1)
+	ld s5, 56(a1)
+	ld s6, 64(a1)
+	ld s7, 72(a1)
+	ld s8, 80(a1)
+	ld s9, 88(a1)
+	ld s10, 96(a1)
+	ld s11, 104(a1)
+
+	ret    /* return to ra */
+\end{lstlisting}
+
+% ------------------------------------------------------------------------------
+\subsubsection{1.3 Build Automation: Makefile Integration}
+To link \texttt{uthread.o} and \texttt{uthread\_switch.o} into the final xv6 executable \texttt{\_uthread}, the following rules were incorporated into \texttt{Makefile}:
+
+\begin{lstlisting}[style=bash]
+$U/uthread_switch.o: $U/uthread_switch.S
+	$(CC) $(CFLAGS) -c -o $U/uthread_switch.o $U/uthread_switch.S
+
+$U/_uthread: $U/uthread.o $U/uthread_switch.o $(ULIB) $U/user.ld
+	$(LD) $(LDFLAGS) -T $U/user.ld -o $U/_uthread $U/uthread.o $U/uthread_switch.o $(ULIB)
+	$(OBJDUMP) -S $U/_uthread > $U/uthread.asm
+\end{lstlisting}
+
+And \texttt{\$U/\_uthread} was appended to the xv6 user utilities list (\texttt{UPROGS}).
+
+% ==============================================================================
+\subsection{Part 2. Run it and verify}
+
+\subsubsection{Compilation and QEMU Execution}
+The kernel and user filesystem image were rebuilt:
+\begin{lstlisting}[style=bash]
+$ make user/_uthread fs.img
+riscv64-linux-gnu-gcc -Wall -Werror ... -c -o user/uthread.o user/uthread.c
+riscv64-linux-gnu-gcc -Wall -Werror ... -c -o user/uthread_switch.o user/uthread_switch.S
+riscv64-linux-gnu-ld -z max-page-size=4096 -T user/user.ld -o user/_uthread user/uthread.o user/uthread_switch.o user/ulib.o user/usys.o user/printf.o user/umalloc.o
+riscv64-linux-gnu-objdump -S user/_uthread > user/uthread.asm
+mkfs/mkfs fs.img README ... user/_uthread
+\end{lstlisting}
+
+We then booted xv6 inside QEMU and executed \texttt{uthread}. Below is the real terminal transcript:
+
+\begin{lstlisting}[style=bash]
+$ uthread
+thread_a started
+thread_b started
+thread_c started
+thread_c 0
+thread_a 0
+thread_b 0
+thread_c 1
+thread_a 1
+thread_b 1
+thread_c 2
+thread_a 2
+thread_b 2
+thread_c 3
+thread_a 3
+thread_b 3
+...
+thread_c 98
+thread_a 98
+thread_b 98
+thread_c 99
+thread_a 99
+thread_b 99
+thread_c: exit after 100
+thread_a: exit after 100
+thread_b: exit after 100
+thread_schedule: no runnable threads
+$ 
+\end{lstlisting}
+
+All three threads synchronized startup using their \texttt{volatile} flags, alternated counting turns in round-robin sequence from 0 to 99, completed their loops at 100, and exited smoothly. When all threads completed, the scheduler properly reported \texttt{thread\_schedule: no runnable threads} and terminated.
+
+% ==============================================================================
+\subsection{Observe: Deep Dive Analysis}
+
+\begin{quote}
+\textbf{Observe:} \textit{What exactly does \texttt{thread\_switch} save and load? Why is \texttt{ra} the register that makes execution continue in the other thread?}
+\end{quote}
+
+\subsubsection{1. Exactly What Registers Are Saved and Loaded}
+\texttt{thread\_switch} saves and restores precisely \textbf{14 registers} (112 bytes total) defined by the RISC-V calling convention as \textbf{callee-saved}:
+\begin{center}
+\begin{tabularx}{\textwidth}{l l l X}
+\toprule
+\textbf{Register} & \textbf{ABI Name} & \textbf{Width} & \textbf{Architectural Role} \\
+\midrule
+\texttt{x1}  & \texttt{ra}     & 64-bit & Return address (target instruction for \texttt{ret}) \\
+\texttt{x2}  & \texttt{sp}     & 64-bit & Stack pointer (top of thread's private stack frame) \\
+\texttt{x8}  & \texttt{s0/fp}  & 64-bit & Saved register 0 / frame pointer \\
+\texttt{x9}  & \texttt{s1}     & 64-bit & Saved register 1 \\
+\texttt{x18}--\texttt{x27} & \texttt{s2}--\texttt{s11} & 64-bit each & Saved registers 2 through 11 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\paragraph{Why Caller-Saved Registers Are Omitted:}
+Notice that caller-saved registers (\texttt{a0}--\texttt{a7}, \texttt{t0}--\texttt{t6}) are \textbf{not} saved by \texttt{thread\_switch}. Under the C ABI, because \texttt{thread\_switch} is invoked as an ordinary C function call (\texttt{thread\_switch(\&old->ctx, \&new->ctx)}), the C compiler itself is responsible for pushing any active caller-saved variables onto the thread's stack before the call occurs. Thus, saving only the callee-saved set plus \texttt{sp} and \texttt{ra} is necessary and sufficient to restore full execution context.
+
+\subsubsection{2. Why ra Makes Execution Continue in the Other Thread}
+The \texttt{ra} (Return Address) register holds the 64-bit program address to which the CPU branches when executing a subroutine return (\texttt{ret}, which is pseudo-assembly for \texttt{jalr zero, 0(ra)}).
+
+In our user threading engine, \texttt{ra} governs thread continuation in two distinct operational phases:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{First Time a Thread Runs (Bootstrapping via \texttt{thread\_create}):}\\
+    When a thread is initialized in \texttt{thread\_create(func)}, its saved context is explicitly configured:
+    \begin{center}
+        \texttt{t->ctx.ra = (uint64)func;}
+    \end{center}
+    When the scheduler subsequently selects this thread for the first time, \texttt{thread\_switch} executes:
+    \begin{center}
+        \texttt{ld ra, 0(a1)} $\longrightarrow$ loads address of \texttt{func} into register \texttt{ra}\\
+        \texttt{ld sp, 8(a1)} $\longrightarrow$ loads top of thread's stack into register \texttt{sp}\\
+        \texttt{ret} $\longrightarrow$ CPU branches directly to \texttt{func}
+    \end{center}
+    Execution begins immediately inside \texttt{func} on the thread's dedicated stack.
+
+    \item \textbf{Subsequent Context Switches (Resumption after \texttt{thread\_yield}):}\\
+    When an already-running thread yields the CPU, it calls \texttt{thread\_schedule()}, which in turn issues:
+    \begin{center}
+        \texttt{thread\_switch(\&old->ctx, \&next\_thread->ctx);}
+    \end{center}
+    The assembly instruction \texttt{call thread\_switch} automatically stores the return address (the next instruction inside \texttt{thread\_schedule} immediately following the call) into register \texttt{ra}.
+    \begin{itemize}[noitemsep]
+        \item When \texttt{thread\_switch} starts, \texttt{sd ra, 0(a0)} saves this instruction pointer into the yielding thread's context structure.
+        \item When this thread is later rescheduled, \texttt{ld ra, 0(a1)} restores this saved pointer back into register \texttt{ra}.
+        \item When \texttt{thread\_switch} executes \texttt{ret}, the CPU returns to the exact location inside \texttt{thread\_schedule} where the thread paused, seamlessly resuming user code execution.
+    \end{itemize}
+\end{enumerate}
+
+Thus, \texttt{ra} serves as the pivotal register that directs hardware instruction fetching to the exact point of suspension or initial entry.
+
+% ==============================================================================
+\subsection{Conclusion}
+Laboratory Work 18 demonstrated that thread scheduling and context switching are not proprietary magical operations reserved solely for the operating system kernel. By preserving and restoring the callee-saved registers (\texttt{ra}, \texttt{sp}, \texttt{s0}--\texttt{s11}) in assembly, an application can switch execution threads entirely in user space in just a few dozen CPU cycles. This architecture forms the foundational design of modern async runtimes, goroutines, and lightweight fiber libraries.
+
+\end{document}
